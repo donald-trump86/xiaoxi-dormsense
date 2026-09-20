@@ -1,0 +1,14 @@
+# Manual dashboard YAML example; confirm actual entity IDs in HA first.
+title: XiaoXi DormSense (SIMULATED)
+views:
+  - title: 模拟环境
+    path: simulation
+    cards:
+      - type: markdown
+        content: "此面板仅展示 node90 模拟数据，不是宿舍实测。"
+      - type: entities
+        title: 合成读数（光照为 0–1 比例）
+        entities:
+          - sensor.xiaoxi_simulated_temperature
+          - sensor.xiaoxi_simulated_humidity
+          - sensor.xiaoxi_simulated_light_ratio

@@ -1,0 +1,46 @@
+name: Feature Request / 功能建议
+description: 提出一个可验收的模块任务或接口变更
+title: "[Feature] "
+body:
+  - type: dropdown
+    id: module
+    attributes:
+      label: 所属模块
+      options:
+        - firmware / 感知通信
+        - MQTT / 公共协议
+        - home-assistant / 平台部署
+        - analytics / 数据分析
+        - hermes / Agent
+        - tests / 场景交互
+        - docs / 文档展示
+    validations:
+      required: true
+  - type: textarea
+    id: need
+    attributes:
+      label: 需求与范围
+      description: 为什么需要？本次不做什么？硬件/数据是否已确认？
+    validations:
+      required: true
+  - type: textarea
+    id: interface
+    attributes:
+      label: 公共接口与依赖
+      description: Topic、JSON、HA entity_id、环境变量是否变化？需谁评审？
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准与验证计划
+      description: 列出可检查的结果；区分离线、模拟、真实设备和未验证项。
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: 安全检查
+      options:
+        - label: 未包含真实密码、Token、宿舍个人信息或未经授权的素材
+          required: true

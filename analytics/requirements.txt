@@ -1,0 +1,4 @@
+# Planned analytics implementation; not needed for the offline simulator/tests.
+pandas>=2.2,<3
+numpy>=1.26,<3
+matplotlib>=3.9,<4

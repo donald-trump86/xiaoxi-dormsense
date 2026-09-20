@@ -1,0 +1,49 @@
+# Credentials and local overrides
+.env
+.env.*
+!.env.example
+**/secrets.h
+**/secrets.yaml
+**/secrets.yml
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+credentials*.json
+*.log
+
+# Python / notebooks
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# Embedded / build / editors
+.pio/
+build/
+dist/
+*.elf
+*.hex
+*.bin
+.vscode/
+.idea/
+.DS_Store
+
+# Runtime data: only synthetic samples belong in Git
+data/raw/
+data/processed/*
+!data/processed/README.md
+deploy/runtime/
+deploy/mosquitto/passwords
+home-assistant/configuration.local.yaml
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+# Private experiments and local AI logs
+experiments-private/
+ai-usage.local.md

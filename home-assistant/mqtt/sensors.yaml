@@ -1,0 +1,66 @@
+# Synthetic node90 only. Actual node01 mapping is Planned pending hardware.
+sensor:
+  - name: "XiaoXi Simulated Temperature"
+    unique_id: xiaoxi_node90_temperature
+    state_topic: xiaoxi/dorm/node90/telemetry
+    value_template: >-
+      {% set v = value_json %}
+      {% set valid = v.schema_version | default('') == '1.0' and
+        v.node_id | default('') == 'node90' and v.simulated | default(false) == true %}
+      {{ v.temperature if valid and v.temperature is defined and
+        v.temperature is not none and v.temperature is number and
+        v.temperature is not boolean else 'None' }}
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    availability_topic: xiaoxi/dorm/node90/status
+    availability_template: >-
+      {{ value_json.state if value_json.schema_version | default('') == '1.0'
+        and value_json.node_id | default('') == 'node90'
+        and value_json.state | default('') in ['online', 'offline'] else 'offline' }}
+    payload_available: online
+    payload_not_available: offline
+    expire_after: 35
+    qos: 1
+  - name: "XiaoXi Simulated Humidity"
+    unique_id: xiaoxi_node90_humidity
+    state_topic: xiaoxi/dorm/node90/telemetry
+    value_template: >-
+      {% set v = value_json %}
+      {% set valid = v.schema_version | default('') == '1.0' and
+        v.node_id | default('') == 'node90' and v.simulated | default(false) == true %}
+      {{ v.humidity if valid and v.humidity is defined and
+        v.humidity is not none and v.humidity is number and
+        v.humidity is not boolean and 0 <= v.humidity <= 100 else 'None' }}
+    unit_of_measurement: "%"
+    device_class: humidity
+    state_class: measurement
+    availability_topic: xiaoxi/dorm/node90/status
+    availability_template: >-
+      {{ value_json.state if value_json.schema_version | default('') == '1.0'
+        and value_json.node_id | default('') == 'node90'
+        and value_json.state | default('') in ['online', 'offline'] else 'offline' }}
+    payload_available: online
+    payload_not_available: offline
+    expire_after: 35
+    qos: 1
+  - name: "XiaoXi Simulated Light Ratio"
+    unique_id: xiaoxi_node90_light
+    state_topic: xiaoxi/dorm/node90/telemetry
+    value_template: >-
+      {% set v = value_json %}
+      {% set valid = v.schema_version | default('') == '1.0' and
+        v.node_id | default('') == 'node90' and v.simulated | default(false) == true %}
+      {{ v.light if valid and v.light is defined and v.light is not none and
+        v.light is number and v.light is not boolean and
+        0 <= v.light <= 1 else 'None' }}
+    state_class: measurement
+    availability_topic: xiaoxi/dorm/node90/status
+    availability_template: >-
+      {{ value_json.state if value_json.schema_version | default('') == '1.0'
+        and value_json.node_id | default('') == 'node90'
+        and value_json.state | default('') in ['online', 'offline'] else 'offline' }}
+    payload_available: online
+    payload_not_available: offline
+    expire_after: 35
+    qos: 1

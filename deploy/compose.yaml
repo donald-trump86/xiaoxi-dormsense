@@ -1,0 +1,30 @@
+# Local development only. No public listeners and no embedded credentials.
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/passwords:/mosquitto/config/passwords:ro
+      - mosquitto-data:/mosquitto/data
+    security_opt:
+      - no-new-privileges:true
+
+  home-assistant:
+    # Optional local evaluation; pin a tested release/digest before the demo.
+    image: ghcr.io/home-assistant/home-assistant:stable
+    profiles: [platform]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8123:8123"
+    volumes:
+      - ./runtime/home-assistant:/config
+    depends_on:
+      - mosquitto
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  mosquitto-data:

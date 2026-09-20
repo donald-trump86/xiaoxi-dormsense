@@ -1,0 +1,47 @@
+name: Bug Report / 缺陷报告
+description: 提供可复现的代码、协议或设备问题
+title: "[Bug] "
+body:
+  - type: input
+    id: module
+    attributes:
+      label: 所属模块与版本
+      description: 模块、commit、OS、相关依赖/板卡版本
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: 验证环境
+      options:
+        - 离线单元测试
+        - 模拟 MQTT 节点
+        - 实物设备（请说明型号）
+        - 配置或文档
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 最小输入、命令和前置条件，不要上传真实凭据或私人原始数据。
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 预期行为与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏日志与验证范围
+      description: 只附实际取得的证据；说明未验证项，不生成虚假的运行截图。
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私检查
+      options:
+        - label: 已移除密码、Token、Wi-Fi凭据及真实宿舍成员信息
+          required: true

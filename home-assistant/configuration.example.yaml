@@ -1,0 +1,3 @@
+# Copy ONLY into a new, empty test instance. Merge manually with existing config.
+default_config:
+mqtt: !include mqtt/sensors.yaml

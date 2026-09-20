@@ -1,0 +1,5 @@
+# Contract/config validation only; Python 3.11+
+jsonschema>=4.23,<5
+# Activate JSON Schema date-time validation; jsonschema alone treats format as optional.
+rfc3339-validator>=0.1.4,<0.2
+PyYAML>=6.0.2,<7

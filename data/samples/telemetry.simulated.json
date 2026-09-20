@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "node_id": "node90",
+  "boot_id": "sim-session-001",
+  "timestamp": null,
+  "sequence": 0,
+  "simulated": true,
+  "temperature": 24.5,
+  "humidity": 55.0,
+  "light": 0.5,
+  "rssi": -60,
+  "uptime": 0,
+  "sensor_status": {"temperature": "ok", "humidity": "ok", "light": "ok"}
+}
