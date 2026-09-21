@@ -47,3 +47,19 @@ home-assistant/configuration.local.yaml
 # Private experiments and local AI logs
 experiments-private/
 ai-usage.local.md
+
+# Reproducible local skills and JavaScript tooling
+# Keep skills-lock.json in Git; restore generated skill copies from the lock file.
+.agents/
+.npm-cache/
+.pptx-tools/
+node_modules/
+
+# Local browser binaries and deck review screenshots
+.playwright-browsers/
+.deck-preview/
+.pptx-preview/
+
+# Office editor temporary files
+~$*.ppt
+~$*.pptx
