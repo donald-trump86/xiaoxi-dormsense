@@ -53,7 +53,7 @@
 
 - **工具**：DeepSeek Harness（gpt-5.6-sol）；`guizang-ppt-skill`（来源 `op7418/guizang-ppt-skill`）。
 - **目的**：依据仓库已有架构、路线图与真实性约束，生成约 10 分钟的项目规划介绍网页 PPT。
-- **生成**：`presentation/dormsense-intro/index.html`、演讲者备注、制作大纲、本地 Motion One 兜底资源，以及 12 页 16:9 的 `XiaoXi-DormSense-项目介绍.pptx` 和可复现导出脚本；同时整理本地 Skill、npm/PPTX 工具缓存和预览文件的忽略规则。
-- **人工修改**：待课程组成员核对项目叙事、硬件实际情况、隐私边界、引用与现场讲述节奏后填写；AI 不声称已完成人工复核。
+- **生成**：`presentation/dormsense-intro/index.html`、演讲者备注、制作大纲、本地 Motion One 兜底资源，以及 13 页 16:9 的 `XiaoXi-DormSense-项目介绍.pptx` 和可复现导出脚本；加入团队提供的项目 Logo 与 2026-09-22 OpenRouter 月度榜单截图，同时整理本地 Skill、npm/PPTX 工具缓存和预览文件的忽略规则。
+- **人工修改**：待课程组成员核对项目叙事、硬件实际情况、Logo/截图的使用授权、隐私边界、引用与现场讲述节奏后填写；AI 不声称已完成人工复核。
 - **验证**：已运行 Skill 自带的 presenter、Swiss deck 和 runtime-sync 静态校验；浏览器逐页视觉与交互检查结果以实际执行记录为准，不能由静态校验替代。
 - **限制与后续**：PPT 只陈述规划与仓库可追溯现状，不代表真实传感器、MQTT、HA、Hermes 或家居控制已经完成部署和验收。

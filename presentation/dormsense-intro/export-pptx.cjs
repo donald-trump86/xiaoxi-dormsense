@@ -15,8 +15,7 @@ pptx.theme = {
 pptx.defineSlideMaster({
   title: 'LIGHT',
   background: { color: 'FAFAF8' },
-  objects: [],
-  slideNumber: { x: 12.2, y: 0.28, w: 0.65, h: 0.18, color: '737373', fontFace: 'JetBrains Mono', fontSize: 8, align: 'right', margin: 0 }
+  objects: []
 });
 
 const W = 13.333;
@@ -31,6 +30,8 @@ const BLUE2 = '5B7BFF';
 const WHITE = 'FFFFFF';
 const FONT = 'PingFang SC';
 const MONO = 'JetBrains Mono';
+const LOGO = 'presentation/dormsense-intro/images/xiaoxi-dormsense-logo.png';
+const RANKING = 'presentation/dormsense-intro/images/openrouter-global-ranking-2026-09-22.jpg';
 
 function rect(slide, x, y, w, h, fill, line = fill, transparency = 0) {
   slide.addShape(pptx.ShapeType.rect, {
@@ -64,7 +65,7 @@ function txt(slide, text, x, y, w, h, size, color = INK, opt = {}) {
 function chrome(slide, left, index, dark = false, right) {
   const c = dark ? 'B8B8B8' : GREY3;
   txt(slide, left.toUpperCase(), 0.67, 0.35, 5.6, 0.18, 8, c, { fontFace: MONO, charSpacing: 2.1 });
-  txt(slide, right || `${String(index).padStart(2, '0')} / 12`, 10.65, 0.35, 2.0, 0.18, 8, c, { fontFace: MONO, charSpacing: 2.1, align: 'right' });
+  txt(slide, right || `${String(index).padStart(2, '0')} / 13`, 10.65, 0.35, 2.0, 0.18, 8, c, { fontFace: MONO, charSpacing: 2.1, align: 'right' });
 }
 function heading(slide, kicker, title, dark = false, size = 31) {
   txt(slide, kicker, 0.67, 0.78, 8.0, 0.22, 9, dark ? '9C9C9C' : GREY3, { charSpacing: 1.3 });
@@ -87,10 +88,11 @@ function addBulletList(slide, items, x, y, w, dark = false, accent = false) {
 {
   const s = pptx.addSlide();
   s.background = { color: BLUE };
-  chrome(s, 'XiaoXi DormSense · Project Introduction', 1, true, 'SWISS · IKB · 01 / 12');
+  chrome(s, 'XiaoXi DormSense · Project Introduction', 1, true, 'SWISS · IKB · 01 / 13');
   txt(s, 'WIRELESS SENSOR NETWORK × AGENT', 0.67, 0.82, 7.2, 0.22, 9, 'D6DDF4', { fontFace: MONO, charSpacing: 2.3 });
-  txt(s, '交小西', 0.67, 2.18, 6.1, 0.78, 52, WHITE);
-  txt(s, '宿舍智能体', 0.67, 2.9, 7.4, 0.85, 55, WHITE, { italic: true });
+  txt(s, '交小西', 0.67, 2.18, 5.8, 0.72, 47, WHITE);
+  txt(s, '宿舍智能体', 0.67, 2.84, 6.3, 0.78, 48, WHITE, { italic: true });
+  s.addImage({ path: LOGO, x: 8.05, y: 1.12, w: 4.45, h: 4.45, transparency: 0 });
   line(s, 0.67, 6.28, 12.0, 0, '6D82C5', 0.7);
   txt(s, '从宿舍微环境感知出发，规划一条可解释、可扩展、有安全边界的自然语言交互链路。', 0.67, 6.45, 8.0, 0.38, 14, 'E4E8F4');
   txt(s, '本科课程项目 · 规划介绍 · UNDER DEVELOPMENT', 0.67, 6.93, 6.2, 0.18, 8, 'AAB7DE', { fontFace: MONO, charSpacing: 1.8 });
@@ -253,11 +255,29 @@ function addBulletList(slide, items, x, y, w, dark = false, accent = false) {
   note(s, '为什么规划使用 Hermes Agent', ['官方定位是“The Agent That Grows With You”', '价值在于自然语言、记忆、Skills、多模型与隔离运行', 'HA 查询和调用在同一工具集中，不能天然视为只读']);
 }
 
-// 09 · Loop
+// 09 · OpenRouter evidence
+{
+  const s = pptx.addSlide('LIGHT');
+  chrome(s, 'Evidence · OpenRouter', 9);
+  heading(s, 'MONTHLY SNAPSHOT · CAPTURED 2026-09-22', '选择 Hermes，不只靠口号', false, 29);
+  line(s, 0.67, 1.82, 3.6, 0, BLUE, 1.5);
+  txt(s, 'OPENROUTER GLOBAL RANKING', 0.67, 2.03, 3.8, 0.2, 8.5, GREY3, { fontFace: MONO, charSpacing: 1.4 });
+  txt(s, '#1', 0.67, 2.42, 3.25, 0.95, 58, BLUE);
+  txt(s, '50.8T', 0.67, 3.58, 3.55, 0.72, 40, INK);
+  txt(s, 'tokens · This Month', 0.67, 4.28, 3.3, 0.25, 11, GREY3);
+  txt(s, '2.4×', 0.67, 5.32, 2.4, 0.55, 31, BLUE);
+  txt(s, '约为截图中第二名 Claude Code（21.1T）的 2.4 倍', 0.67, 5.9, 3.55, 0.64, 11.5, INK);
+  s.addImage({ path: RANKING, x: 5.15, y: 1.53, w: 7.18, h: 5.66 });
+  txt(s, 'OPENROUTER GLOBAL RANKING', 5.15, 7.02, 3.8, 0.16, 7.5, INK, { fontFace: MONO, bold: true, charSpacing: 1.0 });
+  txt(s, '截图时点数据 · 排名会动态变化', 9.2, 7.02, 3.1, 0.16, 7.5, GREY3, { fontFace: MONO, align: 'right' });
+  note(s, '选择 Hermes，不只靠口号', ['截图记录于 2026-09-22，筛选条件为 This Month', 'Hermes Agent 以 50.8T tokens 排名第一', '第二名 Claude Code 为 21.1T，前者约为后者 2.4 倍', '这是动态使用量快照，不等于能力或安全性排名']);
+}
+
+// 10 · Loop
 {
   const s = pptx.addSlide();
   s.background = { color: INK };
-  chrome(s, 'Interaction · Controlled Loop', 9, true);
+  chrome(s, 'Interaction · Controlled Loop', 10, true);
   heading(s, '不是“说一句就随便执行”', '先读状态，再解释；控制以后再开', true, 28);
   const steps = ['用户以自然语言提出问题', 'Agent 从 HA 读取当前状态', '解释数据、时效与不确定性', '未来经确认后调用低风险场景'];
   steps.forEach((t, i) => {
@@ -275,10 +295,10 @@ function addBulletList(slide, items, x, y, w, dark = false, accent = false) {
   note(s, '先读状态，再解释；控制以后再开', ['用户先提出问题', 'Agent 读取 HA 状态并说明时效', '先给解释与建议', '未来控制必须经过确认和状态回读']);
 }
 
-// 10 · Status
+// 11 · Status
 {
   const s = pptx.addSlide('LIGHT');
-  chrome(s, 'Status · Evidence First', 10);
+  chrome(s, 'Status · Evidence First', 11);
   heading(s, '规划介绍最重要的是不把未来写成现在', '已有骨架，不等于链路完成', false, 29);
   line(s, 6.66, 2.04, 0, 4.52, GREY2);
   txt(s, 'A  AVAILABLE NOW', 0.72, 1.96, 4.8, 0.25, 9, GREY3, { fontFace: MONO, charSpacing: 1.7 });
@@ -294,11 +314,11 @@ function addBulletList(slide, items, x, y, w, dark = false, accent = false) {
   note(s, '已有骨架，不等于链路完成', ['已有协议、Schema、模拟器和配置样例', 'UNO R4 WiFi 已确认', '真实 MQTT、HA、Hermes 与硬件联调仍待完成', '没有证据的能力保持 Planned']);
 }
 
-// 11 · Roadmap
+// 12 · Roadmap
 {
   const s = pptx.addSlide('LIGHT');
   s.background = { color: GREY1 };
-  chrome(s, 'Roadmap · After The MVP', 11);
+  chrome(s, 'Roadmap · After The MVP', 12);
   heading(s, '先完成最小闭环，再扩展', '未来可以长成什么样');
   const cards = [
     ['01', 'TTS 输出', '让回答从屏幕文字扩展到可听见的反馈。'],
@@ -321,12 +341,12 @@ function addBulletList(slide, items, x, y, w, dark = false, accent = false) {
   note(s, '未来可以长成什么样', ['扩展 TTS、无线节点与更多物理量', '历史分析与异常检测对应课程目标', '控制只在 HA 路径和权限边界验证后开放']);
 }
 
-// 12 · Closing
+// 13 · Closing
 {
   const s = pptx.addSlide();
   rect(s, 0, 0, W / 2, H, BLUE);
   rect(s, W / 2, 0, W / 2, H, PAPER);
-  txt(s, '12 / 12', 0.48, 0.35, 1.2, 0.2, 8, 'D6DDF4', { fontFace: MONO });
+  txt(s, '13 / 13', 0.48, 0.35, 1.2, 0.2, 8, 'D6DDF4', { fontFace: MONO });
   txt(s, 'CLOSING', 5.2, 0.35, 1.05, 0.2, 8, 'D6DDF4', { fontFace: MONO, align: 'right', charSpacing: 1.8 });
   txt(s, 'TAKEAWAYS', 7.18, 0.35, 1.7, 0.2, 8, GREY3, { fontFace: MONO, charSpacing: 1.8 });
   txt(s, '03 RULES', 11.4, 0.35, 1.2, 0.2, 8, GREY3, { fontFace: MONO, align: 'right', charSpacing: 1.8 });
