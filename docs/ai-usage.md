@@ -57,3 +57,12 @@
 - **人工修改**：待人工核对项目叙事、硬件实际情况、Logo/截图的使用授权、隐私边界、引用与现场讲述节奏后填写；AI 不声称已完成人工复核。
 - **验证**：已运行 Skill 自带的 presenter、Swiss deck 和 runtime-sync 静态校验；浏览器逐页视觉与交互检查结果以实际执行记录为准，不能由静态校验替代。
 - **限制与后续**：PPT 只陈述规划与仓库可追溯现状，不代表真实传感器、MQTT、HA、Hermes 或家居控制已经完成部署和验收。
+
+### AI-2026-09-27-HERMES-COMPOSE
+
+- **工具**：DeepSeek Harness（space-bunny/stealth/space-bunny-alpha）；未记录具体子模型版本。
+- **目的**：把 Hermes Agent 收编进 `deploy/compose.yaml`，使其可跨机复现，并修复宿主机 bind mount 导致的 SQLite WAL 跨 virtiofs/9p 静默损坏。
+- **生成**：`deploy/compose.yaml` 新增 `hermes` 服务（镜像按 manifest digest 锁定、`hermes-data` named volume、dashboard basic_auth 环境变量、可选 HA 依赖）；`.env.example`、`deploy/README.md`、`docs/deployment.md` 同步；重写 `tests/integration/test_configuration.py` 中被端口策略变更打破的 `test_compose_is_loopback_only`，改为 `test_compose_publishes_no_unguarded_listener` 与 `test_hermes_state_uses_a_named_volume`。
+- **人工修改**：待人工复核端口暴露面决策、守卫测试的改写是否削弱了原有安全不变量，以及文档措辞；AI 不声称已完成人工复核。
+- **验证**：`python scripts/check_repository.py` 通过（29 md / 9 json / 7 yaml）；`python -m unittest discover -s tests` 通过（18 tests）。运行期实测：容器 `deploy-hermes-1` 零重启、日志无 `cross-VM filesystem` 警告、`state.db-wal` 出现（证明 WAL 恢复）、dashboard READY、正确凭据登录 200、错误凭据 401。另对守卫测试做了三次变异验证（删除口令变量／改绑 mosquitto／硬编码口令）均被捕获。**未验证**：LAN 以外网络暴露、真实 HA 联调、Arduino 接入。
+- **限制与后续**：9119 按决定绑 `0.0.0.0`（因 OrbStack 不在 loopback 转发容器端口），这是对原有「全部 loopback」不变量的真实放宽，仅靠 basic_auth 保护，换公共网络前须更换口令。HA 镜像 tag 仍为 `:stable` 未锁 digest。`docs/hardware.md` 中射频模组型号仍待人工确认。
