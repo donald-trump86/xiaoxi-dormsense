@@ -4,7 +4,7 @@
 
 *An Agentic Smart Dormitory System Based on Wireless Sensor Networks*
 
-**Under Development · 本科课程六人小组项目**  
+**Under Development · 本科课程项目**  
 [English](README_EN.md) · [系统架构](docs/architecture.md) · [开发指南](docs/development.md) · [AI Agent 规范](AGENTS.md)
 
 让宿舍的温度、湿度和光照“有迹可循”，也让环境信息变成可理解的建议。XiaoXi DormSense 希望把无线传感网络、智能感知、大数据分析与 AI Agent 结合，构建一个有校园温度、但不夸大能力的宿舍智能助手。
@@ -27,7 +27,7 @@
 1. 使用已拥有的 Arduino UNO R4 WiFi 与至少一个经确认的真实传感器完成端到端演示。
 2. 统一节点 ID、消息格式、时间和离线语义，接入 Mosquitto 与 Home Assistant。
 3. 在可验证的只读边界下，通过 Hermes Agent 查询并解释当前环境状态。
-4. 让六位成员能在清晰接口下并行开发，保留代码、测试与实验的可复现记录。
+4. 各模块在清晰接口下并行推进，保留代码、测试与实验的可复现记录。
 
 **后续扩展**
 
@@ -76,7 +76,7 @@ flowchart TD
 | Agent | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | 独立安装；本仓库只放项目自定义内容 |
 | 分析 | Python 3.11+、Pandas、NumPy、Matplotlib | 首期本地 JSONL 与离线分析；其他数据库/模型可选 |
 | 部署 | Docker Compose、Linux/macOS | 本机隔离样例；LAN/TLS/ACL 待联调 |
-| 协作 | GitHub Flow、Issues、Projects、PR、AI coding agents | 六人分工、人工审查、实验诚信 |
+| 协作 | GitHub Flow、Issues、Projects、PR、AI coding agents | 小步提交、人工审查、实验诚信 |
 
 ## 项目结构
 
@@ -84,7 +84,7 @@ flowchart TD
 xiaoxi-dormsense/
 ├── README.md / README_EN.md / AGENTS.md / LICENSE
 ├── .github/              # Issue、PR 模板与轻量 CI
-├── docs/                 # 架构、硬件、协议、开发、部署、实验与协作
+├── docs/                 # 架构、硬件、协议、开发、部署与实验
 ├── schemas/              # MQTT 遥测 JSON Schema
 ├── firmware/             # UNO R4；ESP32 仅为可选规划
 ├── home-assistant/       # MQTT 实体与 Dashboard 样例
@@ -131,15 +131,9 @@ python scripts/check_repository.py
 
 当前依赖使用版本范围、容器使用初始标签；首次集成验收时记录并固定所测版本，不将本骨架视为已经锁定的生产部署。
 
-## 六人团队协作
+## 工程约定
 
-| 小组 | 成员占位 | 主要任务 |
-| --- | --- | --- |
-| 感知与通信组 | A、B | A：总体架构/MQTT/集成；B：真实采样/固件/边缘处理 |
-| 平台与数据组 | C、D | C：HA/Mosquitto/部署；D：采集/清洗/分析/实验 |
-| Agent 与应用组 | E、F | E：Hermes/工具边界；F：交互/自动化/测试/展示 |
-
-姓名和 GitHub 用户名由本人后续填写。每人有独立技术交付与验收条件，见[团队分工](docs/team.md)。采用 GitHub Flow：`main` 稳定、功能分支、小 PR、同伴审查；不多人直接改 main。[开发流程](docs/development.md)说明 Issues/Projects 用法，尚未自动创建远程项目或保护规则。
+采用 GitHub Flow：`main` 稳定、功能分支、小 PR、审查后合并；不多人直接改 main。[开发流程](docs/development.md)说明 Issues/Projects 用法，尚未自动创建远程项目或保护规则。
 
 AI 辅助开发遵守 [AGENTS.md](AGENTS.md) 和 [AI 使用规范](docs/ai-usage.md)：代码可理解、结果可复现、实验可验证、数据可追溯。
 
@@ -153,7 +147,7 @@ AI 辅助开发遵守 [AGENTS.md](AGENTS.md) 和 [AI 使用规范](docs/ai-usage
 
 ## 项目状态与待确认
 
-**Under Development**。优先确认传感器实际型号、电气兼容、实验网络、部署主机、六人对应身份、课程期限和 Hermes 只读边界。实现细节与验收记录逐步通过 PR 落地；初始化验证范围见[初始化记录](docs/initialization.md)。
+**Under Development**。优先确认传感器实际型号、电气兼容、实验网络、部署主机、课程期限和 Hermes 只读边界。实现细节与验收记录逐步通过 PR 落地；初始化验证范围见[初始化记录](docs/initialization.md)。
 
 ## 致谢、许可证与免责声明
 

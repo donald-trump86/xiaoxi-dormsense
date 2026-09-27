@@ -1,6 +1,6 @@
-# 开发与协作流程
+# 开发流程
 
-采用轻量 GitHub Flow：从 `main` 建短期分支 → 提交小步修改 → PR → 同伴审查与验证 → 合并 → 删除已合并分支。不要把本页中的示例命令理解为已执行，也不要把配置文件存在理解为组件已经部署。
+采用轻量 GitHub Flow：从 `main` 建短期分支 → 提交小步修改 → PR → 审查与验证 → 合并 → 删除已合并分支。不要把本页中的示例命令理解为已执行，也不要把配置文件存在理解为组件已经部署。
 
 ## 1. 本地环境
 
@@ -19,25 +19,25 @@ Windows PowerShell 激活命令为 `.venv\Scripts\Activate.ps1`。`requirements-
 
 ## 2. 任务与分支
 
-先写 issue，至少包含：用户目标、负责人/审查人、输入与输出、影响路径、验收方法、依赖、隐私/硬件风险。按 [团队分工](team.md) 协调共享文件，尤其是协议、HA 配置与测试。
+先写 issue，至少包含：用户目标、审查人、输入与输出、影响路径、验收方法、依赖、隐私/硬件风险。共享文件（尤其是协议、HA 配置与测试）改动前先协调，避免同时覆盖。
 
 ```bash
 git switch main
 git pull --ff-only
-git switch -c feat/b-sensor-sampling
+git switch -c feat/sensor-sampling
 ```
 
 分支示例：
 
-- `feat/a-mqtt-contract`：协议及兼容性测试。
-- `feat/b-sensor-sampling`：UNO R4 WiFi 采样。
-- `feat/c-ha-mqtt`：平台与 HA 映射。
-- `feat/d-window-statistics`：只读分析与窗口统计。
-- `feat/e-hermes-report`：报告与 HA 接口。
-- `test/f-restart-scenarios`：重启、去重、恢复测试。
+- `feat/mqtt-contract`：协议及兼容性测试。
+- `feat/sensor-sampling`：UNO R4 WiFi 采样。
+- `feat/ha-mqtt`：平台与 HA 映射。
+- `feat/window-statistics`：只读分析与窗口统计。
+- `feat/hermes-report`：报告与 HA 接口。
+- `test/restart-scenarios`：重启、去重、恢复测试。
 - `docs/experiment-template` 或 `fix/null-field-handling`：小范围文档或修复。
 
-上述 Git 命令由成员按实际仓库状态自行执行，不要求脚手架创建者自动提交或推送。保持 PR 聚焦，避免混入不相关格式化或覆盖他人工作。
+上述 Git 命令按实际仓库状态自行执行，不要求脚手架创建者自动提交或推送。保持 PR 聚焦，避免混入不相关格式化或覆盖他人工作。
 
 ## 3. 基础验证（仓库根目录）
 
@@ -63,7 +63,7 @@ python3 simulator/mqtt_node.py --count 3
 建议 PR 正文：
 
 ```text
-关联 issue / 负责人 / 审查人：
+关联 issue / 审查人：
 用户目标与本次变更：
 影响目录、协议与兼容性：
 数据来源：真实 / 模拟 / 人工 / 无数据
@@ -76,7 +76,7 @@ AI 辅助情况（需要时链接到简要记录）：
 
 审查清单：
 
-- 至少一名其他成员审查；变更协议时请消费者负责人确认，权限/控制变更请 C 及相关设备负责人复核。
+- 至少一名其他开发者审查；变更协议时请接口消费者确认，权限/控制变更请平台与设备安全相关方复核。
 - 测试覆盖正常、缺测、重复、乱序与重启；适用时核对 `(node_id, boot_id, sequence)` 去重。
 - 分析只订阅约定的遥测镜像，控制只经 HA；没有未经授权的设备命令 topic 发布。
 - 配置示例与真实配置分开；仓库中无密钥、住户信息和不必要的原始遥测。
@@ -88,9 +88,9 @@ AI 辅助情况（需要时链接到简要记录）：
 
 不要求 GitHub CLI、API token 或自动化机器人。可在网页手动创建一个 Project，使用 `Backlog / Ready / In progress / Review / Done` 五列；没有 Projects 权限时，用 issue labels 和一个置顶进度 issue 达到同样效果。
 
-每张卡片关联一个 issue，手动填写负责人、阶段（Phase 1/2/3）、验收条件、依赖和目标日期。打开 PR 后移到 Review；合并且相应验收完成才移到 Done。代码已合并但实物尚未验证时，保留单独的“实物验收”任务，不能用 Done 掩盖待验证状态。
+每张卡片关联一个 issue，手动填写阶段（Phase 1/2/3）、验收条件、依赖和目标日期。打开 PR 后移到 Review；合并且相应验收完成才移到 Done。代码已合并但实物尚未验证时，保留单独的“实物验收”任务，不能用 Done 掩盖待验证状态。
 
-每次组会只更新实际变化：已完成证据、当前阻塞、下一步与负责人。参考 [路线图](roadmap.md) 而不是按虚构日程填写进度。
+进度更新只记录实际变化：已完成证据、当前阻塞与下一步。参考 [路线图](roadmap.md) 而不是按虚构日程填写进度。
 
 ## 6. 接口变更与复现
 
