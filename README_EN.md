@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="presentation/dormsense-intro/images/xiaoxi-dormsense-logo.png" alt="XiaoXi DormSense 项目 Logo" width="220">
+</p>
+
 # XiaoXi DormSense
 
 **交小西宿舍智能体**  
