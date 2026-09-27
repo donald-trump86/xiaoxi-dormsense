@@ -1,4 +1,6 @@
-# Local development only. No public listeners and no embedded credentials.
+# Local development only. Mosquitto and Home Assistant bind loopback; the Hermes
+# dashboard binds all interfaces on purpose and requires the basic_auth credentials
+# below. No embedded credentials in this file.
 services:
   mosquitto:
     image: eclipse-mosquitto:2.0
@@ -26,5 +28,48 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  hermes:
+    # Upstream is installed by its own image; do not vendor the source here.
+    # Pinned by manifest digest so a second machine gets the same build.
+    # Source-pinned behaviour notes: ../hermes/README.md
+    image: nousresearch/hermes-agent@sha256:39c4ac5a8eaecddc525cd680eb4bda1143f2b12e8f21e2d63c2d5d471a8390c8
+    profiles: [agent]
+    restart: unless-stopped
+    # The image ships no default command; the entrypoint would otherwise fall
+    # back to the interactive TUI, which exits immediately without a TTY and
+    # takes the whole container down in a restart loop.
+    command: ["gateway", "run"]
+    # 0.0.0.0 is deliberate. OrbStack does not forward published container ports
+    # on host loopback, so a 127.0.0.1 bind is unreachable from the host browser.
+    # The dashboard auth gate below is what makes this non-loopback bind safe;
+    # without it the upstream refuses to start.
+    ports:
+      - "0.0.0.0:9119:9119"
+    volumes:
+      # Named volume, never a host bind mount. HERMES_HOME keeps SQLite databases,
+      # and a virtiofs/9p bind mount silently corrupts their WAL; the image
+      # disables journal_mode=WAL because of it. Credentials live in this volume
+      # and are never committed.
+      - hermes-data:/opt/data
+    environment:
+      - HERMES_DASHBOARD=1
+      # Compose service name; inside this network 127.0.0.1 is the hermes
+      # container itself, not Home Assistant.
+      - HASS_URL=http://home-assistant:8123
+      - HASS_TOKEN=${HASS_TOKEN}
+      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_USER:-root}
+      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_PASSWORD}
+    # Optional on purpose. Home Assistant lives in the `platform` profile and
+    # needs interactive first-run onboarding, so a hard dependency would make
+    # `--profile agent` unusable on a fresh machine. Start HA first when you
+    # need the integration; service-name DNS works without depends_on.
+    depends_on:
+      home-assistant:
+        condition: service_started
+        required: false
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   mosquitto-data:
+  hermes-data:

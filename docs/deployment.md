@@ -47,13 +47,20 @@ docker compose --env-file .env -f deploy/compose.yaml --profile platform up -d
 
 按[面板说明](../home-assistant/README.md)核实真实 entity_id，再导入示例卡片。先做 node90 模拟链路，真实 node01 映射与固件联调仍 Planned。模拟器结束发 offline 后传感器应不可用，这是正常行为。
 
-## 4. Hermes 独立安装与只读验收
+## 4. Hermes 容器部署与只读验收
 
-按 [Hermes 集成核查](../hermes/README.md)对应的官方版本安装，不复制上游到此仓库。**只读执行层尚为 Planned；其权限与替代工具绕过测试通过前，不向 Agent 提供真实 HA Token，也不启用原生 homeassistant 工具集。** 当前只能使用人工脱敏的静态资料，并明确不是实时查询。
+Hermes Agent 由官方镜像运行，本仓库不复制上游源码。镜像按 manifest digest 锁定在 [compose.yaml](../deploy/compose.yaml)，状态存于 named volume `hermes-data`（`/opt/data`）；**不要**改回宿主机 bind mount，跨 virtiofs/9p 的绑定会静默损坏其 SQLite WAL。启动前在 `.env` 填入 `HERMES_DASHBOARD_USER` 与 `HERMES_DASHBOARD_PASSWORD`。
 
-隔离环境中的只读执行边界完成并经评审验收后，才由操作者创建独立的非管理员账号及长期访问 Token，并按经过审查的凭据隔离方案接入。非管理员不意味着细粒度只读；不能简单将 Token 注入同时拥有写工具或任意 HTTP/shell 能力的 Agent。Token 不放 prompts、仓库或 GitHub Actions。
+```bash
+docker compose --env-file .env -f deploy/compose.yaml --profile agent up -d
+docker compose -f deploy/compose.yaml logs --tail 50 hermes
+```
 
-主机访问测试 HA 时 HASS_URL 可为 `http://127.0.0.1:8123`。这只是地址说明，不是启用授权；远程访问需 TLS 与认证网络边界。满足前述门槛后再做真实只读调用验收；控制继续禁用，提示词不是安全隔离。
+**只读执行层尚为 Planned；其权限与替代工具绕过测试通过前，不向 Agent 提供真实 HA Token，也不启用原生 homeassistant 工具集。** 当前只能使用人工脱敏的静态资料，并明确不是实时查询。
+
+容器内 `HASS_URL` 固定为 compose 服务名 `http://home-assistant:8123`；同一网络内 `127.0.0.1` 指向 Hermes 容器自身而非 HA。宿主机侧工具访问 HA 仍用 `http://127.0.0.1:8123`。这只是地址说明，不是启用授权；远程访问需 TLS 与认证网络边界。满足前述门槛后再做真实只读调用验收；控制继续禁用，提示词不是安全隔离。
+
+9119 有意发布在 `0.0.0.0`：OrbStack 不在宿主机 loopback 转发容器端口，绑 `127.0.0.1` 会导致浏览器打不开面板。该暴露面由强制 `dashboard.basic_auth` 保护，未配置时上游拒绝启动而非降级为无鉴权。换到公共网络前更换口令，并注意面板具备调用 LLM 与执行工具的权限。
 
 ## 5. 真实 Arduino / LAN 接入前置检查
 
