@@ -5,7 +5,7 @@
 
 **Under Development** · [中文文档](README.md)
 
-A six-student undergraduate course project at Xi'an Jiaotong University, connecting instrumentation, intelligent sensing, Wireless Sensor Networks, and Big Data Fundamentals. We aim to turn dormitory environmental readings into understandable, privacy-conscious insights.
+An undergraduate course project at Xi'an Jiaotong University, connecting instrumentation, intelligent sensing, Wireless Sensor Networks, and Big Data Fundamentals. We aim to turn dormitory environmental readings into understandable, privacy-conscious insights.
 
 ## Scope and status
 
@@ -55,9 +55,9 @@ python scripts/check_repository.py
 
 The default simulator prints JSONL without networking. All values are synthetic, `simulated=true`, and timestamps are null. Optional local MQTT publishing requires separate setup described in the [simulator guide](simulator/README.md). Compose examples bind loopback only and do not constitute a wireless deployment.
 
-## Collaboration and roadmap
+## Development workflow and roadmap
 
-Three pairs: A/B architecture and firmware; C/D platform and analytics; E/F Agent, interaction and system testing. Names and GitHub handles remain placeholders. Use feature branches, small PRs, interface review and truthful validation reports. See [team responsibilities](docs/team.md), [development](docs/development.md), [AGENTS.md](AGENTS.md) and [AI usage](docs/ai-usage.md).
+Use feature branches, small PRs, interface review and truthful validation reports. See [development](docs/development.md), [AGENTS.md](AGENTS.md) and [AI usage](docs/ai-usage.md).
 
 1. **MVP:** one real sensor → MQTT → HA → verified read-only Hermes query.
 2. **Phase 2:** more sensors/nodes, history, cleaning, charts, networking experiments and deterministic anomalies.

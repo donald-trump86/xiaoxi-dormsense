@@ -51,13 +51,13 @@ docker compose --env-file .env -f deploy/compose.yaml --profile platform up -d
 
 按 [Hermes 集成核查](../hermes/README.md)对应的官方版本安装，不复制上游到此仓库。**只读执行层尚为 Planned；其权限与替代工具绕过测试通过前，不向 Agent 提供真实 HA Token，也不启用原生 homeassistant 工具集。** 当前只能使用人工脱敏的静态资料，并明确不是实时查询。
 
-隔离环境中的只读执行边界完成并经 C/E/F 验收后，才由操作者创建独立的非管理员账号及长期访问 Token，并按经过审查的凭据隔离方案接入。非管理员不意味着细粒度只读；不能简单将 Token 注入同时拥有写工具或任意 HTTP/shell 能力的 Agent。Token 不放 prompts、仓库或 GitHub Actions。
+隔离环境中的只读执行边界完成并经评审验收后，才由操作者创建独立的非管理员账号及长期访问 Token，并按经过审查的凭据隔离方案接入。非管理员不意味着细粒度只读；不能简单将 Token 注入同时拥有写工具或任意 HTTP/shell 能力的 Agent。Token 不放 prompts、仓库或 GitHub Actions。
 
 主机访问测试 HA 时 HASS_URL 可为 `http://127.0.0.1:8123`。这只是地址说明，不是启用授权；远程访问需 TLS 与认证网络边界。满足前述门槛后再做真实只读调用验收；控制继续禁用，提示词不是安全隔离。
 
 ## 5. 真实 Arduino / LAN 接入前置检查
 
-默认 Broker 端口只绑定 loopback，UNO 无法连接，**这是安全默认值而不是完整无线部署**。由 A/C 明确实验网络、Broker 主机 LAN 地址、Wi-Fi 频段/认证限制、每节点账号与 Topic ACL、TLS 证书及 Arduino 库支持、防火墙后，再另做经审查的配置变更。不要直接取消端口地址限制并暴露给公网。校园 Wi-Fi 可能有设备隔离、Portal 或认证限制，须先确认使用政策；可选授权的隔离实验 AP。
+默认 Broker 端口只绑定 loopback，UNO 无法连接，**这是安全默认值而不是完整无线部署**。由平台与网络评审明确实验网络、Broker 主机 LAN 地址、Wi-Fi 频段/认证限制、每节点账号与 Topic ACL、TLS 证书及 Arduino 库支持、防火墙后，再另做经审查的配置变更。不要直接取消端口地址限制并暴露给公网。校园 Wi-Fi 可能有设备隔离、Portal 或认证限制，须先确认使用政策；可选授权的隔离实验 AP。
 
 本 Compose 使用端口映射、不依赖 host networking，便于 macOS/Linux 一致开发；不包括 HA 自动发现网络、多播或 USB 透传。镜像 `2.0`/`stable` 尚非锁定可复现版本，首次成功联调应将所测 tag/digest 记录并固定到 PR 中。
 

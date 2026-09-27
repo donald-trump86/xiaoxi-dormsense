@@ -28,6 +28,6 @@ python simulator/mqtt_node.py --publish --count 12 --interval 10
 
 仅允许 loopback 地址；未提供 TLS，因此拒绝远程主机。`.env` 不会被 Python 自动加载。示例密码占位符被拒绝，失败返回非零；不在日志打印密码。Ctrl-C / 正常结束尝试发送 retained offline；进程被强杀时由 LWT 处理。每个同时运行的模拟器必须有独立 node_id，不能与真实节点共用 ID。
 
-遥测 QoS 0/non-retained，status QoS 1/retained，clean session、30 秒 keepalive。模拟器是有限批次工具，不实现长期守护、断线缓存、完整重连状态恢复或 command 订阅。异常测试期间断网行为需单独记录；生产级固件重连由 B 实现。
+遥测 QoS 0/non-retained，status QoS 1/retained，clean session、30 秒 keepalive。模拟器是有限批次工具，不实现长期守护、断线缓存、完整重连状态恢复或 command 订阅。异常测试期间断网行为需单独记录；生产级固件重连由固件模块实现。
 
 协议见 [MQTT v1](../docs/mqtt-protocol.md)。不得将输出重命名为真实实验数据。
