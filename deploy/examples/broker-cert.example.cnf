@@ -1,0 +1,13 @@
+# Copy privately and replace 192.0.2.1 with the reviewed Broker LAN IP before signing.
+# 192.0.2.1 is a documentation-only placeholder, not a working device address.
+[server_extensions]
+basicConstraints = critical,CA:false
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
+subjectAltName = @addresses
+
+[addresses]
+DNS.1 = mosquitto
+IP.1 = 192.0.2.1

@@ -1,0 +1,151 @@
+# Standalone formal baseline. Do not layer onto or apply to the existing deployment.
+# Defaults use a separate project and local-only ports; see docs/deployment.md.
+name: ${COMPOSE_PROJECT_NAME:-xiaoxi-review}
+
+x-runtime: &runtime
+  image: ${XIAOXI_RUNTIME_IMAGE:-xiaoxi/runtime:formal}
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  init: true
+  restart: unless-stopped
+  pids_limit: 64
+  mem_limit: 256m
+  cpus: 0.5
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto@sha256:199ea8ef2e35ec2b1b37e59cfd1dbae538ed4dfa4a2251a121a52215a6248a21
+    user: "1883:1883"
+    entrypoint: [mosquitto]
+    command: [-c, /mosquitto/private/mosquitto.conf]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "127.0.0.1:1883:1883"
+      - "${MQTT_BIND_ADDRESS:-127.0.0.1}:8883:8883"
+    volumes:
+      - type: bind
+        source: ./runtime/secure/broker
+        target: /mosquitto/private
+        read_only: true
+        bind: {create_host_path: false}
+      - mosquitto-data:/mosquitto/data
+    networks: [backend]
+
+  home-assistant:
+    image: ghcr.io/home-assistant/home-assistant@sha256:3e6710a7ab2a61311d9d899b719f6c3657791c63e8f4942cec4ebc42401d6b76
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    ports: ["127.0.0.1:8123:8123"]
+    volumes:
+      - home-assistant-data:/config
+      - type: bind
+        source: ../home-assistant/configuration.secure.example.yaml
+        target: /config/configuration.yaml
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../home-assistant/mqtt/real
+        target: /config/mqtt/real
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ../home-assistant/automations
+        target: /config/automations
+        read_only: true
+        bind: {create_host_path: false}
+    depends_on: [mosquitto]
+    networks: [backend]
+
+  node01-validator:
+    <<: *runtime
+    build:
+      context: ..
+      dockerfile: deploy/images/runtime/Dockerfile
+    command: [-B, /repo/services/bridge/validator.py, --config, /run/xiaoxi/config.json]
+    volumes:
+      - type: bind
+        source: ./runtime/secure/validator
+        target: /run/xiaoxi
+        read_only: true
+        bind: {create_host_path: false}
+      - validator-state:/var/lib/xiaoxi
+    depends_on: [mosquitto]
+    networks: [backend]
+
+  read-gateway:
+    <<: *runtime
+    command: [-B, /repo/services/bridge/read_gateway.py, --config, /run/xiaoxi/config.json]
+    volumes:
+      - type: bind
+        source: ./runtime/secure/gateway
+        target: /run/xiaoxi
+        read_only: true
+        bind: {create_host_path: false}
+    depends_on: [home-assistant]
+    networks: [backend, agent]
+
+  hermes:
+    image: ${XIAOXI_HERMES_IMAGE:-xiaoxi/hermes:formal}
+    build:
+      context: ../hermes
+      dockerfile: Dockerfile
+    command: [gateway, run]
+    restart: unless-stopped
+    cap_drop: [NET_RAW, NET_ADMIN]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - hermes-data:/opt/data
+      - type: bind
+        source: ./runtime/secure/whisper-base
+        target: /opt/data/whisper-base
+        read_only: true
+        bind: {create_host_path: false}
+    environment:
+      HERMES_DASHBOARD: "1"
+      HERMES_DASHBOARD_BASIC_AUTH_USERNAME: ${HERMES_DASHBOARD_USER:-operator}
+      HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: ${HERMES_DASHBOARD_PASSWORD:?set a private dashboard password}
+      HASS_URL: http://read-gateway:8080
+      HASS_TOKEN: ${HASS_TOKEN:?set the distinct gateway query credential}
+      HTTP_PROXY: http://inference-egress:3128
+      HTTPS_PROXY: http://inference-egress:3128
+      ALL_PROXY: http://inference-egress:3128
+      http_proxy: http://inference-egress:3128
+      https_proxy: http://inference-egress:3128
+      all_proxy: http://inference-egress:3128
+      NO_PROXY: localhost,127.0.0.1,::1,read-gateway
+      no_proxy: localhost,127.0.0.1,::1,read-gateway
+    depends_on: [read-gateway, inference-egress]
+    networks: [agent]
+
+  inference-egress:
+    <<: *runtime
+    command: [-B, /repo/services/bridge/inference_egress.py, --host, 0.0.0.0, --port, "3128"]
+    networks: [agent, egress-outbound]
+
+  dashboard-ingress:
+    <<: *runtime
+    command: [-B, /repo/services/bridge/dashboard_ingress.py, --host, 0.0.0.0, --port, "9119"]
+    ports: ["${DASHBOARD_BIND_ADDRESS:-127.0.0.1}:9119:9119"]
+    depends_on: [hermes]
+    networks: [agent, dashboard-ingress]
+
+networks:
+  backend: {}
+  agent:
+    internal: true
+    enable_ipv6: true
+  egress-outbound:
+    internal: false
+    enable_ipv6: true
+  dashboard-ingress:
+    internal: false
+    enable_ipv6: true
+
+volumes:
+  mosquitto-data: {}
+  home-assistant-data: {}
+  validator-state: {}
+  hermes-data: {}

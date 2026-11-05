@@ -1,0 +1,12 @@
+{
+  "backend_url": "http://home-assistant:8123",
+  "backend_token": "REPLACE_WITH_LOCAL_HA_BACKEND_TOKEN",
+  "query_token": "REPLACE_WITH_RANDOM_DISTINCT_QUERY_TOKEN_32_CHARS",
+  "allowed_entities": [
+    "sensor.xiaoxi_node01_temperature",
+    "sensor.xiaoxi_node01_humidity",
+    "sensor.xiaoxi_node01_light",
+    "sensor.xiaoxi_node02_ir_event",
+    "sensor.xiaoxi_node01_button_event"
+  ]
+}

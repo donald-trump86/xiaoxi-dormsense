@@ -1,0 +1,14 @@
+# New-install CA only. The private CA key must never enter a service mount/image.
+[req]
+prompt = no
+distinguished_name = subject
+x509_extensions = ca_extensions
+
+[subject]
+CN = XiaoXi local development CA
+
+[ca_extensions]
+basicConstraints = critical,CA:true
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always

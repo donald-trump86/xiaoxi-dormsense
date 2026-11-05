@@ -1,0 +1,8 @@
+{
+  "host": "mosquitto",
+  "port": 8883,
+  "username": "xiaoxi_validator",
+  "password": "REPLACE_WITH_LOCAL_VALIDATOR_PASSWORD",
+  "ca_file": "/run/xiaoxi/ca.crt",
+  "state_path": "/var/lib/xiaoxi/sequence.json"
+}

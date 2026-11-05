@@ -1,0 +1,5 @@
+# NEW instance only. Existing installations must merge; do not replace user config.
+default_config:
+automation: !include automations/environment-retention.yaml
+mqtt:
+  sensor: !include_dir_merge_list mqtt/real
