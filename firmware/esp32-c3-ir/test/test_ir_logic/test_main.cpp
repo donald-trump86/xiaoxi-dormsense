@@ -1,5 +1,7 @@
 #include <unity.h>
+#include <cstring>
 #include "ir_node_logic.h"
+#include "ir_raw_timing.h"
 
 using namespace xiaoxi::ir;
 
@@ -44,10 +46,47 @@ void test_loopback_frame_matcher() {
   TEST_ASSERT_FALSE(matches_loopback_frame("GREE", LOOPBACK_NEC_CODE, 32));
 }
 
+void test_raw_timing_fixed_units_and_format() {
+  const uint16_t ticks[] = {1, 4480, 2240, 280, 840};
+  char out[320] = {};
+  TEST_ASSERT_TRUE(format_raw_timing_part(ticks, 5, false, 17, 0, out, sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING(
+      "raw_timing capture=17 rawlen=5 kept=5 truncated=0 overflow=0 offset=0 count=5 unit=us times=2,8960,4480,560,1680",
+      out);
+}
+
+void test_raw_timing_chunks_are_bounded() {
+  uint16_t ticks[300];
+  for (auto& value : ticks) value = 65535;
+  char out[320] = {};
+  TEST_ASSERT_TRUE(format_raw_timing_part(ticks, 301, true, 4294967295U, 272, out, sizeof(out)));
+  TEST_ASSERT_NOT_NULL(std::strstr(out, "kept=300 truncated=1 overflow=1 offset=272 count=16"));
+  TEST_ASSERT_NOT_NULL(std::strstr(out, "times=131070,131070"));
+  TEST_ASSERT_TRUE(std::strlen(out) < 300);
+  TEST_ASSERT_TRUE(format_raw_timing_part(ticks, 68, false, 0, 64, out, sizeof(out)));
+  TEST_ASSERT_NOT_NULL(std::strstr(out, "offset=64 count=4 unit=us times=131070,131070,131070,131070"));
+}
+
+void test_raw_timing_rejects_invalid_or_short_buffers() {
+  const uint16_t ticks[] = {1, 10};
+  char out[320] = {};
+  TEST_ASSERT_FALSE(format_raw_timing_part(nullptr, 2, false, 0, 0, out, sizeof(out)));
+  TEST_ASSERT_FALSE(format_raw_timing_part(ticks, 0, false, 0, 0, out, sizeof(out)));
+  TEST_ASSERT_FALSE(format_raw_timing_part(ticks, 2, false, 0, 1, out, sizeof(out)));
+  TEST_ASSERT_FALSE(format_raw_timing_part(ticks, 2, false, 0, 16, out, sizeof(out)));
+  TEST_ASSERT_FALSE(format_raw_timing_part(ticks, 2, false, 0, 0, nullptr, sizeof(out)));
+  char tiny[] = {'X', 'X', 'X', 'Q'};
+  TEST_ASSERT_FALSE(format_raw_timing_part(ticks, 2, false, 0, 0, tiny, 3));
+  TEST_ASSERT_EQUAL_CHAR('Q', tiny[3]);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_supported_protocols_and_ac_spec_bounds);
   RUN_TEST(test_command_deduplicator_and_ttl);
   RUN_TEST(test_loopback_frame_matcher);
+  RUN_TEST(test_raw_timing_fixed_units_and_format);
+  RUN_TEST(test_raw_timing_chunks_are_bounded);
+  RUN_TEST(test_raw_timing_rejects_invalid_or_short_buffers);
   return UNITY_END();
 }
