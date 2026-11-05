@@ -1,0 +1,5 @@
+# Versions already exercised by the private runtime; no credentials/config loader.
+jsonschema==4.26.0
+rfc3339-validator==0.1.4
+PyYAML==6.0.3
+paho-mqtt==2.1.0
