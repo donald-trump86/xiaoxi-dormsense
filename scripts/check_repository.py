@@ -22,12 +22,13 @@ LINK_PATTERN = re.compile(r"\[[^\]]*\]\(([^\s)]+)(?:\s+\"[^\"]*\")?\)")
 
 
 class HomeAssistantLoader(yaml.SafeLoader):
-    """Parse the one HA include tag used here without reading/expanding its target."""
+    """Parse the two supported HA include tags without opening their targets."""
 
 
-HomeAssistantLoader.add_constructor(
-    "!include", lambda loader, node: loader.construct_scalar(node)
-)
+for include_tag in ("!include", "!include_dir_merge_list"):
+    HomeAssistantLoader.add_constructor(
+        include_tag, lambda loader, node: loader.construct_scalar(node)
+    )
 
 
 def repository_files():
