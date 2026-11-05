@@ -89,7 +89,7 @@ python scripts/check_repository.py
 
 ## 开发与后续
 
-采用 GitHub Flow、功能分支和小 PR；提交应围绕可独立审查的改动，而不是制造时间线。当前建议的提交分组见[工程基线](docs/engineering-baseline.md)。整理文件不等于已创建提交。
+采用 GitHub Flow、功能分支和小 PR；提交围绕可独立审查的改动。2026-11-05 整理的实际模块提交、SHA 链接与查看方法见[提交学习索引](docs/commit-guide.md)，较早的构建证据见[工程基线](docs/engineering-baseline.md)。这些提交记录本次整理，不倒填过去的开发日期；main 保留供审查后合并。
 
 下一步先完成最新按钮固件、实际浏览器语音和空调响应的人工核对。一天历史统计和卡尔曼当前估计已有只读实现，预测与对话摘要接口仍需单独验证，见[数据说明](docs/history-and-kalman.md)。可更换空调型号的初始化与其他 HA 设备扩展见[初始化设计](docs/ac-onboarding.md)。[路线图](docs/roadmap.md)保留阶段验收门槛，[实验设计](docs/experiments.md)规定指标和证据口径。
 
