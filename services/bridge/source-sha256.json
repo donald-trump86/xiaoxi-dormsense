@@ -1,0 +1,12 @@
+{
+  "services/bridge/validator.py": "439d7ea93d3fed154bfac524b4f0bee1b1057d4ffb6badf182783be4a985c66c",
+  "services/bridge/read_gateway.py": "d3b28e373c504fbaea4a573941f8dab957b2d52328e28ef75fbf44a9c9cb7804",
+  "services/bridge/inference_egress.py": "3ddeda6f3821d6a48f79ae09250bae4a8d8500198f7dcf3f12caec015510c747",
+  "services/bridge/dashboard_ingress.py": "17906a1cea09de8b011c2769201c8dab483f4bb3514683311accc3792469de73",
+  "services/bridge/tests/test_validator.py": "f002e720291eb7f7d9e301add29ebacfbacc840e4e0be637d2875679a78d9437",
+  "services/bridge/tests/test_read_gateway.py": "2534b148e25d18c59daf294ddf6c8208cda81d994639da08e1e1497713b010b1",
+  "services/bridge/tests/test_gateway_http.py": "a82c07faf9f31ac344ca7c97462e98de198e777931f19ef468083b8a4ca5c78c",
+  "services/bridge/tests/test_inference_egress.py": "cc1da0607408b00903299ce96228673ce8ac9ba3ef67ecda723a37b4006587a6",
+  "services/bridge/tests/test_dashboard_ingress.py": "fe5035f31be555bbebae058ae52bd5ec70fd60e2a8b7aebc61ab4ad301025f23",
+  "services/bridge/tests/test_ha_config.py": "7d47a11aada2c6f3447f2cbf8c3e464115b6344c5dc813111e2f2930d28246d9"
+}
