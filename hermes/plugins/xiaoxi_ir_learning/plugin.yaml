@@ -1,0 +1,12 @@
+{
+  "manifest_version": 1,
+  "name": "xiaoxi_ir_learning",
+  "version": "0.1.0",
+  "kind": "standalone",
+  "description": "Restricted, human-guided IR remote learning; no IR replay.",
+  "provides_tools": [
+    "xiaoxi_ac_initialize",
+    "xiaoxi_ac_learn_key",
+    "xiaoxi_ac_learning_status"
+  ]
+}

@@ -1,0 +1,22 @@
+# Merge through Hermes' official configuration API; do not replace an existing profile.
+# Secrets, provider routing, voice settings and all old conversations stay separate.
+plugins:
+  enabled: [xiaoxi_ir_learning]
+  disabled: [a2a-platform, spotify]
+# HA state-query tools use REST; its separate WebSocket messaging adapter is unused.
+platforms:
+  homeassistant:
+    enabled: false
+platform_toolsets:
+  cli: [homeassistant, xiaoxi_ir_learning, memory, session_search]
+kanban:
+  notify_in_gateway: false
+  dispatch_in_gateway: false
+sessions:
+  auto_prune: false
+# The web page remembers its actual conversation per browser/profile.
+# Native MRU auto-resume would override an explicit fresh/New Chat request.
+display:
+  # Install skins/xiaoxi.yaml in the selected profile before choosing this skin.
+  skin: xiaoxi
+  tui_auto_resume_recent: false
