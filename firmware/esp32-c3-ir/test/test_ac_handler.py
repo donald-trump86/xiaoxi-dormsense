@@ -18,34 +18,91 @@ PRELUDE = r'''
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 #include "IRac.h"
 #include "IRsend_test.h"
 #include "IRutils.h"
 #include "ir_node_logic.h"
+#include "ir_learning.h"
+#include "ir_raw_timing.h"
+#include "ir_learning_capture.h"
 
 using byte = unsigned char;
 namespace _IRrecv { extern atomic_irparams_t params; }
 struct { template<typename... Args> void printf(const char*, Args...) {} } Serial;
 void delay(unsigned long) {}
+uint32_t now_ms = 100;
+uint32_t millis() { return now_ms; }
+void esp_fill_random(void* data, size_t size) {
+  static uint8_t nonce = 0;
+  std::memset(data, ++nonce, size);
+}
+struct TrackedReceiver : IRrecv {
+  TrackedReceiver() : IRrecv(4) {}
+  bool enabled = true;
+  int disabled = 0;
+  int enabled_calls = 0;
+  bool inject_saved = false;
+  decode_results saved{};
+  bool decode(decode_results* result) {
+    if (!inject_saved) return IRrecv::decode(result);
+    *result = saved;
+    inject_saved = false;
+    _IRrecv::params.rawlen = 0;
+    return true;
+  }
+  void disableIRIn() { enabled = false; ++disabled; IRrecv::disableIRIn(); }
+  void enableIRIn(bool pullup) {
+    enabled = true; ++enabled_calls; IRrecv::enableIRIn(pullup);
+  }
+} irrecv;
 
 struct TrackedAc : IRac {
   TrackedAc() : IRac(3) {}
   int calls = 0;
   bool fail = false;
+  bool inject_echo = false;
+  uint8_t echo_state = kStopState;
   stdAc::state_t sent;
   bool sendAc() {
+    assert(!irrecv.enabled);
     ++calls;
     sent = next;
-    return !fail && IRac::sendAc();
+    const bool result = !fail && IRac::sendAc();
+    if (inject_echo) {
+      _IRrecv::params.rawlen = 140;
+      _IRrecv::params.rcvstate = echo_state;
+    }
+    return result;
   }
 } ac;
-IRsendTest irsend(3);
-IRrecv irrecv(4);  // No save buffer: decode the synthetic capture directly.
+struct TrackedSender : IRsendTest {
+  TrackedSender() : IRsendTest(3) {}
+  int raw_calls = 0;
+  std::vector<uint16_t> raw_sent;
+  void sendRaw(const uint16_t* data, uint16_t count, uint16_t hz) {
+    assert(!irrecv.enabled && hz == 38 && !preparation_pending());
+    ++raw_calls;
+    raw_sent.assign(data, data + count);
+    IRsendTest::sendRaw(data, count, hz);
+  }
+  static bool preparation_pending();
+} irsend;
 xiaoxi::ir::CommandDeduplicator dedup;
+xiaoxi::ir::CommandParser command_parser;
+xiaoxi::ir::WireCommand command;
+xiaoxi::ir::LearningWindow learning;
+xiaoxi::ir::RawPreparation preparation;
+xiaoxi::ir::RawWaveform sending_waveform;
+bool TrackedSender::preparation_pending() { return preparation.pending; }
+char boot_id[] = "node02-00000001";
+bool raw_timing_pending = false;
 constexpr char COMMAND_TOPIC[] = "xiaoxi/dorm/node02/command";
 std::string event_type, event_detail;
+std::vector<std::pair<std::string, std::string>> events;
 int successes = 0;
 void publish_event(const char* type, const char*, const char* detail) {
+  events.emplace_back(type, detail);
   event_type = type;
   event_detail = detail;
   if (event_type == "ac_preview_ready" || event_type == "ac_command_sent") {
@@ -135,12 +192,29 @@ int main() {
     assert(event_type == "command_rejected" && successes == 0);
     assert(event_detail == "unsupported_ac_protocol");
   }
+  // RX is explicitly paused during sending; synthetic edges are discarded.
+  ac.inject_echo = true;
+  for (const auto state : {kStopState, kMarkState}) {
+    ac.echo_state = state;
+    const int before = irrecv.disabled;
+    request("ac_send", "GREE");
+    assert(ac.calls == 1 && event_type == "ac_command_sent");
+    assert(event_detail.find("rx_paused=true") != std::string::npos);
+    assert(event_detail.find("rx_echo_edges") == std::string::npos);
+    assert(irrecv.enabled && irrecv.disabled == before + 1);
+    assert(_IRrecv::params.rawlen == 0);
+    assert(_IRrecv::params.rcvstate == kIdleState);
+  }
+  ac.inject_echo = false;
   ac.fail = true;
+  ac.inject_echo = true;
   request("ac_send");
   assert(ac.calls == 1 && irsend.outputStr().empty());
   assert(event_type == "command_rejected" && successes == 0);
   assert(event_detail == "ac_send_failed");
-  std::puts("AC handler: dry-run, single send, cool26 roundtrip, off, rejection PASS");
+  assert(_IRrecv::params.rawlen == 0);
+  assert(_IRrecv::params.rcvstate == kIdleState);
+  std::puts("AC handler: dry-run, single send, cool26 roundtrip, off, rejection, RX-paused semantics PASS");
 }
 '''
 
@@ -157,10 +231,11 @@ class AcHandlerTest(unittest.TestCase):
             harness.write_text(PRELUDE + handler + CHECKS)
             binary = Path(tmp) / "handler-test"
             command = [os.environ.get("CXX", "c++"), "-std=c++17", "-DUNIT_TEST",
-                       "-D_IR_ENABLE_DEFAULT_=false"]
+                       "-D_IR_ENABLE_DEFAULT_=false", "-DSEND_RAW=true"]
             for protocol in ("KELVINATOR", "GREE", "NEC"):
                 command += [f"-DSEND_{protocol}=true", f"-DDECODE_{protocol}=true"]
-            for path in (FIRMWARE / "include", LIBRARY / "src", LIBRARY / "test"):
+            for path in (FIRMWARE / "include", LIBRARY / "src", LIBRARY / "test",
+                         FIRMWARE / ".pio/libdeps/native/ArduinoJson/src"):
                 command += ["-I", str(path)]
             command += [str(harness)]
             command += [str(LIBRARY / "src" / f"{name}.cpp") for name in sources]

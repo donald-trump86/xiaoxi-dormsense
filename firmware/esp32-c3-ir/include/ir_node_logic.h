@@ -112,7 +112,7 @@ class CommandDeduplicator {
   }
 
   bool seen_or_record(const char* command_id) {
-    if (!command_id || !command_id[0] || std::strlen(command_id) >= kMaxIdLen) {
+    if (!command_id || !command_id[0] || std::strlen(command_id) > kMaxIdLen) {
       return true;  // Reject empty or oversized command_id as invalid/blocked.
     }
     for (size_t i = 0; i < kCapacity; ++i) {
@@ -120,14 +120,14 @@ class CommandDeduplicator {
         return true;
       }
     }
-    std::strncpy(ids_[next_index_], command_id, kMaxIdLen - 1);
-    ids_[next_index_][kMaxIdLen - 1] = '\0';
+    std::strncpy(ids_[next_index_], command_id, kMaxIdLen);
+    ids_[next_index_][kMaxIdLen] = '\0';
     next_index_ = (next_index_ + 1) % kCapacity;
     return false;
   }
 
  private:
-  char ids_[kCapacity][kMaxIdLen];
+  char ids_[kCapacity][kMaxIdLen + 1];
   size_t next_index_;
 };
 
