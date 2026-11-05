@@ -1,0 +1,28 @@
+{
+  "format_version": 1,
+  "repository": "Systran/faster-whisper-base",
+  "revision": "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66",
+  "metadata_source": "https://huggingface.co/api/models/Systran/faster-whisper-base/revision/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66?blobs=true",
+  "files": [
+    {
+      "path": "config.json",
+      "size": 2309,
+      "git_blob_sha1": "867cf1a0fece1394e01d55e287ba2f09a577c046"
+    },
+    {
+      "path": "model.bin",
+      "size": 145217532,
+      "sha256": "d01c3014881c9c6f3133c182f3d2887eb6ca1c789a7538c5c007196857a0a6a9"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 2203239,
+      "git_blob_sha1": "7818adb6de9fa3064d3ff81226fdd675be1f6344"
+    },
+    {
+      "path": "vocabulary.txt",
+      "size": 459861,
+      "git_blob_sha1": "c9074644d9d1205686f16d411564729461324b75"
+    }
+  ]
+}
