@@ -1,55 +1,68 @@
 # 系统架构与模块边界
 
-XiaoXi DormSense / 交小西宿舍智能体，是独立学生课程项目。架构服务于可完成、可验收的课程作业，不引入微服务集群、消息队列套娃或逐样本 LLM 推理。
+当前系统由两块实物板、七个容器角色和浏览器组成。2026-11-05 的工程整理把已运行代码纳入正式目录；新的独立部署模板尚未替换现有实例。历史验收、离线测试与新模板验收分别记录，见[工程基线](engineering-baseline.md)。
 
 ```mermaid
-flowchart TD
-    P[宿舍物理环境] --> N[Arduino UNO R4 WiFi 传感节点]
-    N -->|Wi-Fi / MQTT JSON| M[Mosquitto]
-    M --> H[Home Assistant 实体与状态]
-    M -.约定的只读遥测镜像.-> D[Python 数据采集与分析]
-    H --> A[Hermes Agent]
-    D -->|未来：脱敏统计报告接口| A
-    H --> U[XiaoXi Dashboard]
-    A --> X[XiaoXi 自然语言助手]
-    A -->|未来：受限且确认的服务调用| H
-    H -->|未来：非 retained command| M
+flowchart LR
+    N[UNO node01] -->|TLS 8883 原始遥测| M[Mosquitto]
+    R[ESP32-C3 node02] -->|TLS 8883 红外事件| M
+    M --> V[node01-validator]
+    V -->|校验后遥测与状态| M
+    M --> H[Home Assistant]
+    H --> G[read-gateway\n固定实体 GET]
+    G --> A[Hermes]
+    U[浏览器 9119] --> I[dashboard-ingress]
+    I --> A
+    A --> E[inference-egress\n限定 CONNECT]
+    E --> C[DeepSeek / Edge TTS 等既有服务]
+    H -->|只读一天快照| D[统计 / 当前估计]
+    M -.未来：独立只读采集.-> D
 ```
 
-主链严格为 **Arduino → MQTT → Home Assistant → Hermes Agent**。分析层不重复控制设备，使用订阅 Broker 的只读 telemetry/status/event 接口保留原始消息与服务器接收时间；这是明确约定的数据出口，不是绕过 HA 控制。HA 负责当前实体状态，分析负责历史统计，两者通过 node_id/entity_id 映射对齐。
+## 数据与职责
 
-## 模块契约
-
-| 模块 | 输入 → 输出 | 不负责 |
+| 组件 | 实际职责 | 不应混淆的能力 |
 | --- | --- | --- |
-| firmware | 实物驱动 → v1遥测/状态 | LLM 推理、云凭据 |
-| MQTT/集成 | 协议、节点ID、网络实验 | 单方面改其他模块接口 |
-| HA/部署 | MQTT → 实体/Dashboard | 隐式执行任意 Agent 指令 |
-| analytics | 只读 MQTT → 清洗/统计/图表/日报 | 向节点发送控制 |
-| hermes | 用户意图、HA状态、未来统计 → 解释 | 高频采样、确定性告警替代 |
-| 测试/交互 | 接口与场景 → 验收/演示 | 虚构测试结果 |
+| UNO node01 | UART 温湿度、A0 相对光照、按钮事件、12×8 本地反馈 | 不运行大模型；最新源码不等于已烧录二进制 |
+| ESP32-C3 node02 | 接收遥控器、解析空调协议、已授权的红外发送路径 | 接收或发送事件不等于空调状态反馈 |
+| Mosquitto | 独立账号、Topic ACL、TLS、retained availability/LWT | QoS0 不是可靠历史存储 |
+| validator | Schema/语义/来源/序列与握手校验，向 validated Topic 转发 | 持久高水位用于拒绝重放，不是遥测档案 |
+| HA | 固定传感器实体、周期读数时效和 recorder 持久化 | HA Token 本身不保证只读；原始 recorder 行数不等于有效样本数 |
+| read-gateway | 对五个配置实体认证 GET，投影最小属性 | 不开放历史、服务调用、任意实体或后端聚合接口 |
+| Hermes | 按需查询、自然回答、录音转写和语音合成 | 不逐样本推理，不直接发 MQTT，不凭旧记录报告当前值 |
+| inference-egress / dashboard-ingress | 限定外部 HTTPS 连接 / 固定仪表盘反向入口 | 不是通用网络代理，也不提供新账号权限 |
 
-## 已交付与 Planned
+HA 周期实体只有 `node01` 温度、湿度和相对光照。其模板消费校验后的遥测，35 秒没有有效更新即不可用。按钮和红外是“最后一次事件”，没有事件不等于周期传感器掉线；历史事件也不能冒充刚发生的动作。
 
-初始化交付的是协议、模拟器、配置样例、文档和离线测试，不是完整系统。固件、真实传感器链路、常驻采集器、数据库、异常检测、统计服务、Agent 自定义工具、安全控制均 Planned。
+字段、时间与去重规则见[协议](mqtt-protocol.md)。未同步设备时间仍为 `null`；`received_at` 是接收时间，不能称为设备精确采样时刻。真实、模拟、回放和插值分开标注。
 
-### 数据路线（Planned）
+## 查询与网络边界
 
-1. 首期使用 JSONL 原始追加存储和 Pandas 离线处理，先不部署 InfluxDB/Grafana。
-2. 采集包络 `{received_at, topic, payload}`，保留 simulated、boot_id、sequence 和原始 null；UTC 存储，展示时转换本地时区。
-3. 清洗先去重、隔离异常格式、按启动段排序，缺失与插值分别标记。不能把模拟与实测混为一个实验数据集。
-4. 日报先生成脱敏 Markdown/JSON（窗口、有效样本数、缺失率、规则版本、统计与确定性事件）；后续由分析与 Agent 两侧商定版本化查询接口并实现适配。**当前不存在 HTTP 报告 API 或可调用自定义 Skill。**
-5. 阈值、滑动窗口等确定性逻辑检测异常；Agent 仅解释结果，不把全部遥测上传给模型。日报汇总也不应包含个人作息推断。
+[正式 Compose](../deploy/compose.secure.yaml) 为七个角色安排以下网络：
 
-### 控制与失效
+| 网络 | 连接角色 |
+| --- | --- |
+| backend | Mosquitto、HA、validator、read-gateway |
+| agent（internal） | Hermes、read-gateway、inference-egress、dashboard-ingress |
+| egress-outbound | 仅 inference-egress 对外的一侧 |
+| dashboard-ingress | 仅 dashboard-ingress 发布仪表盘端口的一侧 |
 
-首期只读，无开关实体。后续仅低压 LED 操作，经 HA → MQTT → 节点，明确目标、白名单与用户确认。不能只靠提示词保证安全，Hermes 上游的真实权限粒度见[核查说明](../hermes/README.md)。断网不阻塞采样；HA 区分 unknown/unavailable 与正常值；没有数据时 Agent 说“不知道/数据不可用”，不能编造。
+Hermes 只加入内部 agent 网络，不直接发布端口，不挂仓库、Docker socket 或 HA 后端凭据。查询 Token 只对网关有意义；HA 后端 Token 仅保存在网关的私密配置中。网关的列表响应由逐个固定实体 GET 组成，不访问 HA 的全量 `/api/states`。POST、服务路径和未配置实体均拒绝。
 
-### 工程选型
+出口代码只接受现有允许域名的 HTTPS CONNECT，验证目标 DNS 的全部结果并拒绝内网及特殊地址，再使用已验证的数字地址建立连接。TLS 内容仍由实际客户端和服务器端到端处理。代理环境变量只是客户端设置，内部网络与受限网关才构成访问边界。新模板的配置检查不等于重新完成所有运行期绕过测试。
 
-- Arduino IDE 2.x + 官方 UNO R4 Boards 包为初期基线，降低课程组接入成本；确认板卡核心及传感器库版本后记录。PlatformIO 仅在验证该板支持、工具链与烧录稳定后采用，不预生成不确定的 board ID。
-- Python 3.11+，小模块与 unittest 即可；不先上大型 Web 框架。
-- Compose 只部署基础设施，不打包 Hermes 上游，不提前容器化固件或 GPU 推理。
-- 未来多宿舍/ESP32/时间序列数据库均在当前接口稳定后扩展，不预先做多租户。
+浏览器通过受认证的 9119 仪表盘访问 Hermes；中文回答规则位于[项目 workspace](../hermes/workspace/AGENTS.md)。规则约束表达和数据解释，不能替代网络、ACL 或程序鉴权。
 
-关联：[MQTT](mqtt-protocol.md) · [硬件](hardware.md) · [路线图](roadmap.md)。
+## 红外与默认权限
+
+C3 源码保留已有 `ac_send`。预览在发送前返回；真实分支只有一次所选协议 `sendAc()`，但仍没有本地解锁开关、严格 JSON 解析或可证明消息年龄的机制，去重也只有 RAM 八个 ID。启动校准和 NEC 自检会发射非空调红外，不能把“无空调命令”写成“上电无红外”。详见[C3 基线说明](../firmware/esp32-c3-ir/README.md)。
+
+新的 Broker ACL 模板没有任何命令发布账号，HA 账号只有读权限；这是全新部署的最小授权模板，尚未应用到当前 Broker，也不是 C3 固件的本地禁用开关。已授权的人工发送验收与 Hermes 查询边界分开，当前没有 HA/Agent 控制执行层。
+
+## 一天历史与分析
+
+HA 内部自动化每 5 分钟及启动时只清理三类环境实体的一天前状态；这三项停止产生额外长期统计，其他实体保留原策略。分析模块通过有界只读快照，提供最近 24 小时质量检查、去重统计和一维卡尔曼当前估计，不增加容器或另存一套原始历史。参数尚未标定，缺测、重启、间断与 35 秒时效显式处理。
+
+当前没有独立采集器、Hermes 历史接口、趋势预测或日报。分析报告与实时 HA 测量分开，未把滤波值写回实体；后续开放 Agent 摘要须单独审查。具体策略与验收见[历史与卡尔曼说明](history-and-kalman.md)，未来控制流程见[空调初始化设计](ac-onboarding.md)。
+
+Python 服务保持小模块与 `unittest`；固件使用隔离的 PlatformIO 项目。不为当前课程原型加入多租户、分布式集群或额外时序数据库。现有构建、首次配置和数据卷边界见[部署指南](deployment.md)。

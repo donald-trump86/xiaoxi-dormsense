@@ -4,157 +4,99 @@
 
 # XiaoXi DormSense
 
-## 交小西宿舍智能体
+## 小西宿舍智能体
 
 *An Agentic Smart Dormitory System Based on Wireless Sensor Networks*
 
 **Under Development · 本科课程项目**  
-[English](README_EN.md) · [系统架构](docs/architecture.md) · [开发指南](docs/development.md) · [AI Agent 规范](AGENTS.md)
+[系统架构](docs/architecture.md) · [部署指南](docs/deployment.md) · [硬件与接线](docs/hardware.md) · [开发指南](docs/development.md) · [AI Agent 规范](AGENTS.md)
 
-让宿舍的温度、湿度和光照“有迹可循”，也让环境信息变成可理解的建议。XiaoXi DormSense 希望把无线传感网络、智能感知、大数据分析与 AI Agent 结合，构建一个有校园温度、但不夸大能力的宿舍智能助手。
+让宿舍的温度、湿度和光照有迹可循，也让环境信息变成能听懂、能核对的回答。项目结合无线传感网络、环境数据处理与 AI Agent；不把每条传感器消息送给大模型，也不推断个人作息。
 
-> 当前交付是**工程初始化骨架**：文档、协议、离线模拟器、配置样例与基础检查。真实采样、平台部署和 Agent 联调均未完成验收；本页不把计划写成已实现功能。
+## 当前交付
 
-## 项目背景
+截至 2026-11-05，真实传感器的 **UNO R4 WiFi → TLS MQTT → Home Assistant → Hermes 只读查询** 已在本机环境跑通。此前实现分散在忽略的实验目录和运行容器中；现在整理为正式源码、配置模板与离线测试。新部署模板使用独立项目名和数据卷，工程整理没有替换现有实例。同日已在当前 HA 定向启用环境历史的一天保留策略，并验证只读统计和当前状态估计。
 
-大学生宿舍需要了解环境是否闷热、潮湿、过暗，以及一段时间内的变化趋势。我们从可解释、低成本的环境监测入手，而不是监控个人作息或设计自动控制危险电器的系统。
-
-项目来自 **Xi'an Jiaotong University（西安交通大学）**仪器科学与技术、测控技术与仪器及智能感知背景的学生课程实践：
-
-- **无线传感网络**：节点采样、Wi-Fi/MQTT 传输、掉线重连、多节点通信与网络性能实验。
-- **大数据基础**：可追溯数据采集、清洗、缺失处理、时间序列、统计分析、异常检测与可视化。课程原型数据规模有限，不冒称已具备海量分布式处理能力。
-
-## 项目目标
-
-**核心 / MVP**
-
-1. 使用已拥有的 Arduino UNO R4 WiFi 与至少一个经确认的真实传感器完成端到端演示。
-2. 统一节点 ID、消息格式、时间和离线语义，接入 Mosquitto 与 Home Assistant。
-3. 在可验证的只读边界下，通过 Hermes Agent 查询并解释当前环境状态。
-4. 各模块在清晰接口下并行推进，保留代码、测试与实验的可复现记录。
-
-**后续扩展**
-
-多传感器/多节点、可选 ESP32、历史数据分析、确定性异常检测、环境日报、安全的低压 LED 场景，以及适度角色化交互。InfluxDB、Grafana、Scikit-learn 不是 MVP 依赖；硬件按实际拥有情况决定，不预设全部购买。
-
-## 主要功能与当前状态
-
-| 能力 | 本次状态 |
+| 能力 | 当前状态与边界 |
 | --- | --- |
-| 多传感器环境感知（温湿度、光照等） | **Planned**；传感器型号与接线待核实，没有硬件驱动 |
-| MQTT 无线数据传输 | v1 协议、Schema 和模拟发布入口已提供；真实无线链路 **Planned** |
-| Home Assistant 实时监控 | 模拟节点实体/面板配置样例已提供；运行验收 **Planned** |
-| 历史数据采集与分析 | 输入与目录约定已定义；程序、存储与图表 **Planned** |
-| 智能异常检测 | 确定性阈值/窗口方法设计；实现与实验 **Planned** |
-| Hermes Agent 自然语言交互 | 官方集成源码已核查、策略草案已提供；实例接入 **Planned** |
-| 宿舍环境日报与安全场景控制 | **Planned**；当前无可用的日报接口或控制执行层 |
-| 开发验证 | 离线模拟、协议测试、静态配置检查和轻量 CI 定义已提供；不等于实物验收 |
+| 温湿度、相对光照 | SHT31 UART 模块和 LM393/A0 已有真实采样链路；光照是 0–1 相对比例，不能称为 lux，传感器未作计量校准 |
+| 无线传输与 HA | 独立 MQTT 账号、TLS、校验转发、35 秒周期读数过期；真实样本与 node90 模拟样例分开 |
+| 小西当前状态查询 | 原生 HA 工具经固定实体只读网关访问；有真实中文查询与过期/恢复记录 |
+| 语音与个性 | DeepSeek、浏览器录音、离线 Whisper、Edge TTS 和项目提示规则已有实现；麦克风实录、实际浏览器播放质量仍需人工验收 |
+| 板载反馈与按钮 | 12×8 动画和三线按钮状态机有源码；观察到真实单击事件，最新 UNO 二进制及双击/长按未完成现场核对 |
+| ESP32-C3 红外 | 已接收实际遥控器，合成协议发送已测试；节点发送回执不代表空调已收到或改变状态。Hermes 仍没有控制权限 |
+| 历史与估计 | 三类环境历史保留一天，已有只读窗口统计和卡尔曼当前估计；尚无对话历史接口、趋势预测、图表或日报服务 |
+| 正式工程基线 | 两板固件、四个确定性服务、七角色 Compose 和 Hermes 补丁重建配方；构建/离线测试不能代替全新部署验收 |
 
-## 技术架构
+历史原始采样、凭据、数据库、语音样本与排障材料保留在本地忽略目录，不随正式源码提交。公开状态和下一步方法见[工程基线](docs/engineering-baseline.md)、[历史与卡尔曼方案](docs/history-and-kalman.md)。
+
+## 为什么做这个项目
+
+项目来自西安交通大学仪器科学与技术、测控技术与仪器及智能感知背景的学生课程实践：
+
+- 无线传感网络：节点采样、Wi-Fi/MQTT、重连、序列缺口与多节点通信实验。
+- 数据处理：可追溯记录、去重、缺失处理、统计、滤波与预测评价。课程数据规模有限，不冒称海量分布式系统。
+- Agent：理解问题、调用受限工具、解释数据；确定性程序负责校验、时效与权限。
+
+## 系统组成
 
 ```mermaid
-flowchart TD
-    Env[Physical Environment / 宿舍环境] --> Nodes[Sensor Nodes / UNO R4 WiFi]
-    Nodes -->|Wi-Fi + MQTT / JSON| Broker[Mosquitto MQTT Broker]
-    Broker --> HA[Home Assistant]
-    Broker -.只读遥测镜像.-> Data[Python Data Analytics]
-    HA --> Agent[Hermes Agent]
-    Data -->|未来：统计与事件摘要| Agent
-    HA --> UI[实时 Dashboard]
-    Agent --> XiaoXi[XiaoXi Assistant / 交小西]
-    Agent -->|未来：经审核的安全操作| HA
+flowchart LR
+    UNO[UNO R4 WiFi\n温湿度 / 光照 / 按钮] -->|TLS MQTT| MQTT[Mosquitto]
+    IR[ESP32-C3\n红外收发] -->|TLS MQTT| MQTT
+    MQTT --> V[遥测校验器]
+    V --> HA[Home Assistant]
+    MQTT -->|事件| HA
+    HA --> G[固定实体只读网关]
+    G --> A[Hermes / 小西]
+    B[浏览器] --> I[仪表盘入口]
+    I --> A
+    A --> E[限定 HTTPS 出口]
+    E --> C[模型 / 云端 TTS]
+    HA -->|只读一天快照| D[窗口统计 / 当前估计]
+    MQTT -.未来：独立只读采集.-> D
 ```
 
-主链为 **Arduino → MQTT → Home Assistant → Hermes Agent**；分析使用 Broker 的约定只读数据出口，避免重复管理或控制设备。实时监测和异常检测主要由确定性程序完成，**不把每条传感器数据发送给 LLM**。Agent 负责理解意图、调用工具、解释结果和组织反馈。
+七个容器承担消息代理、HA、校验、查询、Agent、外部连接和仪表盘入口七种职责，不是七个大模型。Hermes 位于内部网络，HA 后端 Token 只在查询网关；提示规则不是访问控制。完整边界见[架构](docs/architecture.md)。
 
-详细边界见[架构](docs/architecture.md)。Hermes 原生 `homeassistant` 工具集同时包含读写，不能当成天然只读；真正执行边界完成前，不给 Agent 真实 HA Token，见[核查与安全限制](hermes/README.md)。
+## 目录与开始方式
 
-## 技术栈
+| 目录 | 内容 |
+| --- | --- |
+| [firmware](firmware/arduino-uno-r4/README.md) | UNO 与 [ESP32-C3](firmware/esp32-c3-ir/README.md) 源码、占位凭据和主机测试 |
+| [services/bridge](services/bridge/README.md) | 校验器、只读网关、出口、入口及离线回归 |
+| [home-assistant](home-assistant/README.md) | 真实节点模板与保留的 node90 模拟模板 |
+| [hermes](hermes/README.md) | 固定上游版本的完整项目补丁、构建、语音测试及回答规则 |
+| [deploy](deploy/README.md) | 独立七角色部署、凭据模板与最小镜像上下文 |
+| [analytics](analytics/README.md) / [data](data/README.md) | 一天只读统计、当前平滑估计和测试用模拟样例；无趋势预测服务 |
+| [tests](tests/README.md) / [scripts](scripts/check_repository.py) | 协议、静态配置及正式边界检查 |
 
-| 层级 | 技术 | 说明 |
-| --- | --- | --- |
-| 感知 | Arduino UNO R4 WiFi、C/C++ | 已拥有主板；传感器型号待确认 |
-| 固件开发 | Arduino IDE 2.x + 官方板卡核心 | 初期低门槛；PlatformIO 经板卡工具链验证后再引入 |
-| 通信 | Wi-Fi、MQTT 3.1.1、JSON | Mosquitto、v1 消息契约 |
-| 平台 | Home Assistant | 实体、Dashboard、未来安全自动化 |
-| Agent | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | 独立安装；本仓库只放项目自定义内容 |
-| 分析 | Python 3.11+、Pandas、NumPy、Matplotlib | 首期本地 JSONL 与离线分析；其他数据库/模型可选 |
-| 部署 | Docker Compose、Linux/macOS | 本机隔离样例；LAN/TLS/ACL 待联调 |
-| 协作 | GitHub Flow、Issues、Projects、PR、AI coding agents | 小步提交、人工审查、实验诚信 |
-
-## 项目结构
-
-```text
-xiaoxi-dormsense/
-├── README.md / README_EN.md / AGENTS.md / LICENSE
-├── .github/              # Issue、PR 模板与轻量 CI
-├── docs/                 # 架构、硬件、协议、开发、部署与实验
-├── schemas/              # MQTT 遥测 JSON Schema
-├── firmware/             # UNO R4；ESP32 仅为可选规划
-├── home-assistant/       # MQTT 实体与 Dashboard 样例
-├── hermes/               # 官方集成核查、项目提示策略与 Skills 规划
-├── analytics/            # 分析依赖、实现/Notebook 边界说明
-├── simulator/            # 显式模拟数据，默认不联网
-├── data/                 # 公开模拟样例；本地运行数据忽略
-├── tests/                # 协议、离线模拟和静态集成配置测试
-├── scripts/              # 仓库检查器
-├── deploy/               # Mosquitto / 可选 HA 的 Compose
-└── presentation/         # 课程展示计划与证据要求
-```
-
-## 快速开始
-
-### 1. 获取仓库并准备开发环境
-
-如果已经处于当前仓库，跳过 clone/cd。以下命令确有对应文件，不会安装 HA 或 Hermes：
+先运行不需要设备或服务的检查：
 
 ```bash
-git clone https://github.com/donald-trump86/xiaoxi-dormsense.git
-cd xiaoxi-dormsense
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -r requirements-dev.txt
-```
-
-### 2. 无硬件、无网络服务的冒烟检查
-
-```bash
-python simulator/mqtt_node.py --count 3
-python -m unittest discover -s tests -p 'test_*.py' -v
+python -m pip install -r requirements-dev.txt -r services/bridge/requirements.txt
+python -m unittest discover -s tests -p 'test_*.py'
+python -m unittest discover -s services/bridge/tests -p 'test_*.py'
+python -m unittest discover -s analytics/tests -p 'test_*.py'
 python scripts/check_repository.py
 ```
 
-模拟器只输出 JSONL，不默认联网；每条记录 `simulated=true`、`timestamp=null`。`node90` 专用于示例，不代表已有实体设备。可选 MQTT 发布需安装 `simulator/requirements.txt` 并按[模拟说明](simulator/README.md)配置，不是上述离线命令的隐含行为。
+模拟器 `python simulator/mqtt_node.py --count 3` 只输出明确标记的 JSONL；发布必须显式指定参数，见[模拟器说明](simulator/README.md)。板卡编译与上电按各固件说明进行；不要把示例凭据或测试输入当成真实设备配置。
 
-### 3. 按模块开始开发
+新实例按[部署指南](docs/deployment.md)准备密码、证书、HA 用户、模型认证和本地语音模型。正式入口是 [compose.secure.yaml](deploy/compose.secure.yaml)；原 [compose.yaml](deploy/compose.yaml) 保留为历史开发样例，不等于当前隔离部署。不要在已有实例上直接覆盖配置或删卷。
 
-- 固件先填[硬件确认表](docs/hardware.md)，不猜接线或型号。
-- 平台按[部署指南](docs/deployment.md)手工创建密码文件及测试实例；默认只监听本机，真实 UNO 接入还需网络评审。
-- Agent 先读[Hermes 核查](hermes/README.md)，确认版本与权限，而不是复制未经核实的 CLI/Skill 示例。
-- 任何秘密只存本机忽略文件；`.env.example` 是占位模板，不含可用凭据。
+## 开发与后续
 
-当前依赖使用版本范围、容器使用初始标签；首次集成验收时记录并固定所测版本，不将本骨架视为已经锁定的生产部署。
+采用 GitHub Flow、功能分支和小 PR；提交应围绕可独立审查的改动，而不是制造时间线。当前建议的提交分组见[工程基线](docs/engineering-baseline.md)。整理文件不等于已创建提交。
 
-## 工程约定
+下一步先完成最新按钮固件、实际浏览器语音和空调响应的人工核对。一天历史统计和卡尔曼当前估计已有只读实现，预测与对话摘要接口仍需单独验证，见[数据说明](docs/history-and-kalman.md)。可更换空调型号的初始化与其他 HA 设备扩展见[初始化设计](docs/ac-onboarding.md)。[路线图](docs/roadmap.md)保留阶段验收门槛，[实验设计](docs/experiments.md)规定指标和证据口径。
 
-采用 GitHub Flow：`main` 稳定、功能分支、小 PR、审查后合并；不多人直接改 main。[开发流程](docs/development.md)说明 Issues/Projects 用法，尚未自动创建远程项目或保护规则。
+AI 辅助遵守 [AGENTS.md](AGENTS.md) 和 [AI 使用规范](docs/ai-usage.md)；人工理解、审查、采样和复算不能省略。
 
-AI 辅助开发遵守 [AGENTS.md](AGENTS.md) 和 [AI 使用规范](docs/ai-usage.md)：代码可理解、结果可复现、实验可验证、数据可追溯。
+## 致谢与许可证
 
-## 开发路线
+感谢 Arduino、Eclipse Mosquitto、Home Assistant、NousResearch Hermes Agent 及 Python 科学计算生态。原有 [MIT LICENSE](LICENSE) 保持不变；第三方依赖、素材和数据仍适用各自许可证。
 
-1. **Phase 1 / MVP**：至少一个真实传感器完成 Arduino → MQTT → HA → Hermes 只读查询；留存真实链路证据。
-2. **Phase 2**：多传感器/多节点（额外 ESP32 可选）、历史数据、清洗、图表、通信实验与确定性异常检测。
-3. **Phase 3**：自然语言与历史查询、智能提醒、环境日报、适度角色化、系统测试和最终展示；控制需另行安全验收。
-
-每阶段的退出条件见[路线图](docs/roadmap.md)，无线传感网络与大数据实验的方法/指标见[实验设计](docs/experiments.md)。当前没有真实实验数据或结果。
-
-## 项目状态与待确认
-
-**Under Development**。优先确认传感器实际型号、电气兼容、实验网络、部署主机、课程期限和 Hermes 只读边界。实现细节与验收记录逐步通过 PR 落地；初始化验证范围见[初始化记录](docs/initialization.md)。
-
-## 致谢、许可证与免责声明
-
-感谢 Arduino、Eclipse Mosquitto、Home Assistant、NousResearch Hermes Agent 及 Python 科学计算生态。仓库原有 [MIT LICENSE](LICENSE) 保持不变；第三方依赖、素材和数据仍适用各自许可证。
-
-“交小西”的校园文化灵感旨在让课程实践更有趣。**本项目是独立开发的学生课程项目，不代表西安交通大学或任何相关虚拟形象的官方项目，亦不表示获得官方授权或背书。** 未经确认授权不使用受保护的官方形象、校徽等素材。系统原型不承担消防、医疗或人身安全保障功能，不公开真实宿舍成员活动记录。
+小西的校园文化灵感不代表学校或任何虚拟形象的官方授权、项目或背书。系统原型不承担消防、医疗或人身安全保障功能，不公开真实宿舍成员活动记录。

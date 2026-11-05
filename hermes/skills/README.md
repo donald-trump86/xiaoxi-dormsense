@@ -1,6 +1,6 @@
 # 交小西 Skills 规划
 
-> **尚未实现、安装或运行任何交小西 Skill。** 本目录目前只有规划 README，没有 `SKILL.md`，没有已注册命令或设备控制实现。能力边界见 [Hermes 集成研究](../README.md)，行为要求见 [策略草案](../prompts/xiaoxi-policy.md)。
+> **本目录仍只有 Skills 规划，没有 `SKILL.md` 或可执行实现。** 正式镜像配方不安装这些候选 Skill；本说明也不判断独立运行环境中可能存在的其他 Skill。当前集成与构建边界见[Hermes 集成记录](../README.md)，行为草案见[策略草案](../prompts/xiaoxi-policy.md)。
 
 ## 官方机制：Skill 不是工具权限
 

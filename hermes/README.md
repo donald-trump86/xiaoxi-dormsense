@@ -1,8 +1,91 @@
-# 交小西 × Hermes Agent：集成研究与安全边界
+# 交小西 × Hermes Agent：正式构建基线与来源记录
 
-> **状态：研究与规划，未部署，未连接或验证真实 Home Assistant（HA）。** 本目录只有项目自己的说明、策略草案和 Skills 规划，不包含 Hermes Agent 上游代码、安装包或可执行 HA 适配器。交小西项目与 NousResearch/hermes-agent 分离；上游应在独立目录/运行环境安装和维护，不复制进本仓库。
+截至 2026-11-05，项目已有实验部署，以及原生 HA 只读查询和语音接入的历史验收记录。本目录把已有项目改动整理成固定镜像上的完整补丁、构建配方、项目人格和离线测试。**这里的正式镜像尚未部署；本轮离线验证不代表真实浏览器、麦克风、音质或完整系统已重新验收。**
 
-## 1. 核查基线
+本次只读取了获准的六个公开源码文件、指定的依赖/模型元数据和脱敏构建输出，未访问运行配置、账号、会话、秘密或运行日志，也没有修改、重启运行服务。旧的源码研究保留在文末，其“未部署”等表述记录当时状态。
+
+## 构建输入与补丁来源
+
+基底固定为：
+
+```text
+nousresearch/hermes-agent@sha256:39c4ac5a8eaecddc525cd680eb4bda1143f2b12e8f21e2d63c2d5d471a8390c8
+```
+
+[Dockerfile](Dockerfile) 使用本目录作为构建上下文。[.dockerignore](.dockerignore) 默认排除所有文件，只放行构建脚本、直接依赖及完整哈希锁、补丁及清单、项目人格；测试、临时源码、模型缓存和用户配置均不进入镜像。上游代码保留在镜像中，仓库只保存带原始上下文的统一补丁，不保存六份完整源码。
+
+[补丁清单](patches/manifest.json) 记录六个文件的原始 SHA-256、观察到的实验容器 SHA-256 和正式结果 SHA-256，并固定[补丁](patches/hermes.patch)自身的 SHA-256。[应用脚本](apply_patch.py) 在写入前核对所有原始文件、补丁内容、精确上下文及全部结果。任一不符就拒绝，不使用模糊匹配，也不把应用脚本当作在线更新工具。
+
+| 上游文件（相对 `/opt/hermes`） | 完整补丁包含的项目改动 |
+| --- | --- |
+| `hermes_cli/web_routers/audio.py` | 每请求声线选择、来源/声线回执与一致性检查、既有物理按钮事件读接口 |
+| `tools/tts_tool.py` | 独立声线覆盖、显式 Edge 不跨提供商回退、实际引擎/声线回执、旧调用签名兼容 |
+| `tools/tts_tool_providers.py` | 前后端一致的声线白名单与既有朗读文本清理 |
+| `tools/transcription_local.py` | 保留 `zhconv` 简体转换，移除全局语义替换 |
+| `web/src/components/ChatSidebar.tsx` | 既有录音/朗读/按钮交互；声线选择、错误可见、来源显示、请求取消及旧回调隔离 |
+| `web/src/pages/ChatPage.tsx` | 既有语音文本进入当前终端会话的接线 |
+
+旧私有补丁只覆盖最近一轮修改，其中三个“原始 SHA”与本次固定镜像不同，不能直接作为完整基线。正式补丁重新从原始镜像生成。唯一有意偏离当前实验容器源码的是转写处理：移除 `是内→室内`、`焦大小溪/交大小溪→交大小西`、`小溪→小西` 的全局替换，避免擅自改写用户原话；简繁转换保留。
+
+## 构建与离线验证
+
+在仓库根目录执行：
+
+```bash
+python3 -B hermes/tests/run_offline.py
+# 只运行前端回调及两份 TSX 的转译检查：
+python3 -B hermes/tests/run_frontend_tests.py
+
+# 构建配方；不会启动或替换现有容器：
+docker build --file hermes/Dockerfile --tag xiaoxi/hermes:formal hermes
+```
+
+离线运行器要求本机已有上述固定镜像，使用 `--pull=never`。它创建临时、无网络、只读根文件系统、移除 capabilities 的非 root 容器，把六个原始源码复制到容器自己的临时文件系统，再应用正式补丁。SDK、网络请求、配置、音频与浏览器接口全部用测试替身；运行器不会 `exec` 生产容器。
+
+本次实际执行 `python3 -B hermes/tests/run_offline.py`，结果为：
+
+- 六个原始文件校验、只检查模式、正式应用及六个结果 SHA-256 全部通过；四个 Python 模块编译通过。
+- 26 个 Python 离线用例通过：12 个迁移的声线/路由回归、6 个补丁拒绝与无提前写入测试、2 个转写语义保留测试、6 个依赖冲突门禁测试。
+- 9 个实际侧栏回调测试通过；`ChatSidebar.tsx` 与 `ChatPage.tsx` 的 TypeScript 转译通过。
+
+首次实际镜像构建已通过六文件 SHA 校验，随后默认依赖解析报错 `Because there is no version of ctranslate2==4.8.5`。进一步从官方 PyPI JSON 及固定基底的隔离容器核实：四个指定版本均已发布，`4.8.5` 有 Python 3.13／Linux ARM64 wheel，且符合 `faster-whisper 1.2.1` 的 `ctranslate2>=4.0,<5` 约束。清空解析进程环境、关闭配置发现并明确使用官方索引后，解析成功。默认解析为何失败尚未证实，没有读取运行环境或配置来推断原因。
+
+修订配方按以下输入构建：
+
+- [直接依赖](requirements-voice.txt) 保持 `edge-tts==7.3.1`、`faster-whisper==1.2.1`、`ctranslate2==4.8.5`、`zhconv==1.4.1`。
+- [基底版本约束](requirements-voice-base.txt) 记录语音依赖图中已存在于原始镜像的 21 项兼容版本；只通过 `importlib.metadata` 查询这些包，没有导入应用或导出全局包清单。
+- [完整哈希锁](requirements-voice.lock) 由同一基底中的 `uv 0.11.6` 对官方 `https://pypi.org/simple` 解析生成，共 35 项。目标为 Python 3.13／Linux ARM64，保留上述 21 项基底版本；它固定语音依赖图，其他上游软件仍由基底镜像摘要固定。
+- 构建仅向 `uv` 传入固定的 `PATH`、`HOME`、`TMPDIR`、`LANG`，使用 `--no-config`、明确的官方索引及 `--require-hashes --no-deps` 安装锁中全部 35 项；不会同步或卸载无关基底包。完整传递依赖均已列入锁，不能把这里的 `--no-deps` 用于仅含四项的文件。
+- 安装前后均在无网络构建步骤执行全局 `uv pip check`。[依赖检查脚本](check_voice_dependencies.py) 记录并严格比较下述唯一既有冲突，同时核对 MSAL/cryptography 版本未变；新增冲突、缺失诊断或无法识别的输出均使构建失败。
+- 安装后还要核对锁中全部 35 项版本，并实际导入 `edge_tts`、`faster_whisper`、`ctranslate2`、`zhconv`。门禁不构造模型或处理音频。
+
+后续构建已通过补丁应用和 35 项哈希安装，随后全局检查暴露一个原始镜像已有的问题：`msal 1.36.0` 要求 `cryptography>=2.5,<49`，但基底安装的是 `50.0.0`。已在原始摘要镜像的无网络、无挂载、非 root 临时容器中复核，同样只有这一项冲突；正式检查脚本的原始基线记录步骤也已实测通过。本次保留这两个无关上游包的版本。修订门禁通过仅表示既有冲突保持原样且没有新增冲突，镜像仍有这一项上游依赖问题。
+
+[来源清单](dependency-provenance.json) 保存官方发布 URL、目标 wheel 文件名、上传时间和 SHA-256，以及实际解析参数和边界。四项官方记录分别为 [Edge TTS 7.3.1](https://pypi.org/pypi/edge-tts/7.3.1/json)、[faster-whisper 1.2.1](https://pypi.org/pypi/faster-whisper/1.2.1/json)、[CTranslate2 4.8.5](https://pypi.org/pypi/ctranslate2/4.8.5/json)、[zhconv 1.4.1](https://pypi.org/pypi/zhconv/1.4.1/json)。PyPI 元数据中的哈希不代表本次检查已经下载、安装或验收这些 wheel；实际构建仍须校验下载内容并通过导入门禁。
+
+主任务随后使用修订配方成功构建 `xiaoxi/hermes:formal`：六文件校验与补丁应用通过；安装前后唯一既有冲突完全一致；35 项锁定版本及四个库的实际导入通过；完整 `tsc`／Vite 前端构建通过，用时 1.84 秒。依赖门禁和前端构建均禁用网络，前端只使用基底已有的 `node_modules`，未执行 `npm install`。这些是实际镜像构建证据，独立于前述 AST／回调离线测试。构建继承上游的 `USER`、`ENTRYPOINT` 和 `CMD`。镜像尚未部署，也未因此验收模型、浏览器、麦克风或主观音质。
+
+## 人格与 Whisper 模型前置条件
+
+[项目人格](workspace/AGENTS.md) 复制自获准的项目自有工作区文件，实际 SHA-256 为 `41a741fa41b55ffd38b8ba67899fabc8d725e5b1c83f5e0474987cf96da9343b`。内容保持原样；行为规则仍须由只读网关、MQTT ACL、网络和工具权限执行。镜像中保留副本于 `/opt/xiaoxi/workspace/AGENTS.md`，部署任务须通过已核查的 Hermes 工作区上下文机制挂载/加载它；复制进镜像不代表已自动加载。[旧策略草案](prompts/xiaoxi-policy.md) 和 [Skills 规划](skills/README.md) 继续作为独立研究材料。
+
+**正式部署前必须准备并核对本地 Whisper 模型目录，再只读挂载到 `/opt/data/whisper-base`。** [模型清单](../deploy/examples/whisper-base.manifest.json) 已按官方仓库元数据固定 `Systran/faster-whisper-base` 的 revision `ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66`，列出四个必需文件的大小：权重使用公开 LFS SHA-256，其余三个文件保留官方 Git blob SHA-1；没有把 Git blob 哈希改写成未经核实的 SHA-256。
+
+部署人员独立准备文件后，从仓库根目录运行[离线校验器](../scripts/verify_whisper_model.py)：
+
+```bash
+python3 -B scripts/verify_whisper_model.py deploy/runtime/secure/whisper-base
+```
+
+该校验器只核对本地文件字节，不下载、加载模型或证明转写效果。公开 revision 和哈希不证明原私有模型目录与之匹配；本轮未读取、复制或验收现有模型权重。正式 Compose 的专用只读模型挂载要求目录预先存在，镜像构建保持无模型。模型未备齐或校验失败时，语音部署条件尚未满足。现有上游加载函数仍可能在缓存缺失时尝试下载，须继续由部署配置和出口权限约束，不能以临时开放新域名替代模型准备。
+
+当前正式化工作没有新增设备控制、历史统计接口、自定义 Skill 或出口域名。历史原生查询和语音验收记录不能代替新镜像的构建、加载人格、模型挂载及真实交互验收；是否更新运行实例由单独的部署授权决定。
+
+## 历史源码研究（2026-09-20）
+
+以下保留固定上游 commit 的原始研究事实与来源。它与当前使用的镜像摘要是两个不同的版本锚点；不能据此推断镜像对应的 Git commit。涉及“本次”“当前”的旧研究表述只适用于当时核查范围。
+
+### 1. 核查基线
 
 - 官方仓库：<https://github.com/NousResearch/hermes-agent>。
 - 本次观察到的 `main` commit：[`f9524d3f119c672e4a4444f56d582e7475716ba3`](https://github.com/NousResearch/hermes-agent/commit/f9524d3f119c672e4a4444f56d582e7475716ba3)。官方提交 Feed 标注时间为 `2026-09-20T03:03:15Z`。

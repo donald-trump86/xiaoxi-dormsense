@@ -1,79 +1,154 @@
-# 部署指南
+# 正式基线部署指南
 
-状态：提供 **本机开发配置**，不表示服务已经部署。默认不开放 LAN/公网，也不自动配置 Hermes。Linux 使用 Docker Engine + Compose plugin，macOS 使用已启动的 Docker Desktop 或兼容引擎；先执行 `docker version`、`docker compose version` 确认服务可用。仓库根目录执行下列命令。
+本页针对**新实例**。[正式 Compose](../deploy/compose.secure.yaml)与现有私有实验部署分开，本次只做源码、镜像与离线验证，没有执行新项目启动或替换旧服务。原[开发 Compose](../deploy/compose.yaml)保留为历史兼容入口，不能单独代表当前七角色隔离部署。
 
-## 1. 准备私密配置
+仓库根目录执行命令，先确认 Docker Engine/OrbStack 和 Compose 可用。新项目名隔离容器和卷，**不会隔离宿主机端口**：默认 1883、8123、8883、9119 必须空闲。已有同端口服务时先只做结构/构建检查；并行运行需要单独主机或经审查的端口覆盖，不能直接停掉现有实例。
 
-```bash
-cp .env.example .env
-```
-
-在本机编辑 `.env`，把 MQTT_PASSWORD 换成自己的密码，其他凭据按需留空。不得把 .env 发到 PR、聊天或截图。此文件如需 `source`，值必须是合法 shell 赋值（含特殊字符时单引号引用），且仅 source 自己信任的文件。
-
-## 2. 初始化 Broker 密码文件（交互式）
-
-需要拉取官方镜像和可用 Docker 服务。仅首次、密码文件尚不存在时运行；`-c` 会重建密码文件，不要对已有文件重复使用。
+## 1. 构建前检查
 
 ```bash
-docker run --rm -it --user 0:0 \
-  -v "$PWD/deploy/mosquitto:/work" eclipse-mosquitto:2.0 \
-  sh -c 'mosquitto_passwd -c /work/passwords xiaoxi_dev && chown 1883:1883 /work/passwords && chmod 600 /work/passwords'
+python -m pip install -r requirements-dev.txt -r services/bridge/requirements.txt
+python -m unittest discover -s tests -p 'test_*.py'
+python -m unittest discover -s services/bridge/tests -p 'test_*.py'
+python scripts/check_repository.py
+docker compose --env-file deploy/secure.env.example -f deploy/compose.secure.yaml config --quiet
+docker compose --env-file deploy/secure.env.example -f deploy/compose.secure.yaml build node01-validator hermes
 ```
 
-按提示输入与 `.env` 相同的密码；命令行不携带明文密码。UID 1883 对应该镜像的 mosquitto 用户，若选用其他镜像须先核实。文件是密码哈希而非明文，仍视为敏感。Linux 挂载权限或 macOS 文件共享异常时先排查日志，**不要改成匿名访问或全目录 chmod 777**。本样例为隔离测试共享账号，按节点 ACL 尚待实现。
+构建上下文分别为根目录严格白名单与 `hermes/` 严格白名单。桥接镜像默认 UID 10001、只读根文件系统、无 capabilities；validator 的水位使用独立持久卷。Hermes 继承固定上游入口/运行用户，项目补丁先做六文件 SHA 校验，再安装哈希锁定的语音依赖并离线构建前端，详见[Hermes 来源与检查](../hermes/README.md)。
+
+镜像构建不提供 Wi-Fi、MQTT 密码、HA 用户/Token、模型账号或 Whisper 权重。这些是下一阶段的本地前置条件。
+
+## 2. 新实例的私密目录
+
+仅在这些目标不存在时准备，避免覆盖当前根环境文件或任何已有配置：
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml config --quiet
-docker compose --env-file .env -f deploy/compose.yaml up -d mosquitto
-docker compose -f deploy/compose.yaml logs --tail 50 mosquitto
+umask 077
+mkdir -p deploy/runtime/secure/ca deploy/runtime/secure/broker
+mkdir -p deploy/runtime/secure/validator deploy/runtime/secure/gateway
+mkdir -p deploy/runtime/secure/whisper-base
+cp -n deploy/secure.env.example deploy/runtime/secure.env
+cp -n deploy/examples/validator.example.json deploy/runtime/secure/validator/config.json
+cp -n deploy/examples/gateway.example.json deploy/runtime/secure/gateway/config.json
+cp -n deploy/examples/mosquitto-secure.conf deploy/runtime/secure/broker/mosquitto.conf
+cp -n deploy/examples/mosquitto-acl.conf deploy/runtime/secure/broker/acl
+cp -n deploy/examples/ca.example.cnf deploy/runtime/secure/ca/ca.cnf
+cp -n deploy/examples/broker-cert.example.cnf deploy/runtime/secure/broker/server.cnf
 ```
 
-Compose 只负责服务启动，不把 `.env` 密码写进 Broker；身份认证使用前面生成的文件。本文件中的环境变量主要供本地模拟器/Hermes使用。
+私下编辑副本。`COMPOSE_PROJECT_NAME` 保持独立；仪表盘使用强口令。网关 `query_token` 与环境文件 `HASS_TOKEN` 必须相同，并与 `backend_token` 完全不同。HA 后端 Token 只进入网关配置，不进入 Hermes 环境、提示规则或镜像。validator 使用独立 `xiaoxi_validator` 账号。
 
-先执行[模拟器](../simulator/README.md)的 publish 路径，确认有权限接收、正常断开状态正确，再接 HA。需要独立 MQTT 客户端订阅进行核验，不能仅凭发布进程退出码宣称 HA 收到数据。
+示例值不是已配置的秘密，不应直接上电使用。不要 `source` 不受信文件、在命令参数中填写真实密码、把配置内容输出到终端记录或贴到对话。
 
-## 3. 可选 Home Assistant 本机实例
+## 3. 新 CA 与 Broker 证书
 
-**仅用于全新测试目录**；已有实例请手工合并，禁止覆盖 configuration.yaml。
+在私下复制的 `server.cnf` 中，将文档占位 IP `192.0.2.1` 替换为实际、经核对的 Broker LAN IP，保留 DNS SAN `mosquitto`。板卡用 LAN 地址，validator 用容器 DNS，两种名称都须能验证。换 LAN IP 后重新核对证书，不关闭验证。
+
+使用支持这些扩展的 OpenSSL，为**全新证书目录**生成：
 
 ```bash
-mkdir -p deploy/runtime/home-assistant/mqtt
-cp home-assistant/configuration.example.yaml deploy/runtime/home-assistant/configuration.yaml
-cp home-assistant/mqtt/sensors.yaml deploy/runtime/home-assistant/mqtt/sensors.yaml
-docker compose --env-file .env -f deploy/compose.yaml --profile platform up -d
+openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+  -config deploy/runtime/secure/ca/ca.cnf \
+  -keyout deploy/runtime/secure/ca/ca.key -out deploy/runtime/secure/ca/ca.crt
+openssl req -new -newkey rsa:2048 -sha256 -nodes -subj /CN=mosquitto \
+  -keyout deploy/runtime/secure/broker/server.key -out deploy/runtime/secure/broker/server.csr
+openssl x509 -req -sha256 -days 365 \
+  -in deploy/runtime/secure/broker/server.csr \
+  -CA deploy/runtime/secure/ca/ca.crt -CAkey deploy/runtime/secure/ca/ca.key -CAcreateserial \
+  -extfile deploy/runtime/secure/broker/server.cnf -extensions server_extensions \
+  -out deploy/runtime/secure/broker/server.crt
+openssl verify -CAfile deploy/runtime/secure/ca/ca.crt deploy/runtime/secure/broker/server.crt
+cp -n deploy/runtime/secure/ca/ca.crt deploy/runtime/secure/broker/ca.crt
+cp -n deploy/runtime/secure/ca/ca.crt deploy/runtime/secure/validator/ca.crt
 ```
 
-浏览器打开 `http://127.0.0.1:8123` 完成首次用户初始化。通过 Settings → Devices & services 添加 MQTT 集成，Broker 填 `mosquitto`，端口 `1883`，账号 `xiaoxi_dev`，密码为本机设置。容器间使用服务名，不能填 127.0.0.1（那是 HA 容器自己）。等待 HA 加载配置；发生错误时查看日志和其配置检查结果。本仓库静态 YAML 检查不能取代 HA 运行时配置验证。
+CA 和叶子扩展包含 SKI/AKI、用途与约束，避免新 Python/OpenSSL 严格验证拒绝缺失 AKI 的证书。CA 私钥只留在 `ca/`，不放进 Broker 的整个挂载目录，不进入任何镜像。固件私下填入公有 CA 证书、实际地址及各自账号，按[UNO](../firmware/arduino-uno-r4/README.md)和[C3](../firmware/esp32-c3-ir/README.md)操作；本次没有重刷板卡。
 
-按[面板说明](../home-assistant/README.md)核实真实 entity_id，再导入示例卡片。先做 node90 模拟链路，真实 node01 映射与固件联调仍 Planned。模拟器结束发 offline 后传感器应不可用，这是正常行为。
+## 4. Broker 账号与挂载权限
 
-## 4. Hermes 容器部署与只读验收
-
-Hermes Agent 由官方镜像运行，本仓库不复制上游源码。镜像按 manifest digest 锁定在 [compose.yaml](../deploy/compose.yaml)，状态存于 named volume `hermes-data`（`/opt/data`）；**不要**改回宿主机 bind mount，跨 virtiofs/9p 的绑定会静默损坏其 SQLite WAL。启动前在 `.env` 填入 `HERMES_DASHBOARD_USER` 与 `HERMES_DASHBOARD_PASSWORD`。
+在相同的固定 Mosquitto 镜像中，挂载**新** Broker 目录到 `/work` 并进入 shell，交互生成密码文件。`-c` 只在文件不存在时对第一个账号使用，后续命令追加账号：
 
 ```bash
-docker compose --env-file .env -f deploy/compose.yaml --profile agent up -d
-docker compose -f deploy/compose.yaml logs --tail 50 hermes
+# NODE01_USER / NODE02_USER 须先替换为 ACL 中对应节点的 user 值。
+mosquitto_passwd -c /work/passwords NODE01_USER
+mosquitto_passwd /work/passwords NODE02_USER
+mosquitto_passwd /work/passwords xiaoxi_validator
+mosquitto_passwd /work/passwords xiaoxi_ha_read
 ```
 
-**只读执行层尚为 Planned；其权限与替代工具绕过测试通过前，不向 Agent 提供真实 HA Token，也不启用原生 homeassistant 工具集。** 当前只能使用人工脱敏的静态资料，并明确不是实时查询。
+镜像为 `eclipse-mosquitto@sha256:199ea8ef2e35ec2b1b37e59cfd1dbae538ed4dfa4a2251a121a52215a6248a21`，容器内用户 1883。可选 node90 测试需要另加 `xiaoxi_dev`；它不能写入真实节点。密码文件虽是哈希也保持私密。[默认 ACL](../deploy/examples/mosquitto-acl.conf)没有任何命令发布者，HA 账号只读。C3 固件本身仍有真实发送能力，这份 ACL 不是本地 disarm 开关，也没有修改现有实验账号权限。
 
-容器内 `HASS_URL` 固定为 compose 服务名 `http://home-assistant:8123`；同一网络内 `127.0.0.1` 指向 Hermes 容器自身而非 HA。宿主机侧工具访问 HA 仍用 `http://127.0.0.1:8123`。这只是地址说明，不是启用授权；远程访问需 TLS 与认证网络边界。满足前述门槛后再做真实只读调用验收；控制继续禁用，提示词不是安全隔离。
+validator/gateway 的目录必须可由容器 UID 10001 遍历，配置文件要求该 UID 属主、常规文件和 0600；CA 可读。Broker 文件须供 UID 1883 读取，私钥/密码不放宽为全局可读。先填完配置，再在目标宿主机按实际 UID 映射设定属主和权限。Linux 通常需要对**这次新建目录**设置对应 UID；macOS/OrbStack 文件共享映射须实测，不能机械假定与 Linux 一致，也不能用 `chmod 777` 绕过。
 
-9119 有意发布在 `0.0.0.0`：OrbStack 不在宿主机 loopback 转发容器端口，绑 `127.0.0.1` 会导致浏览器打不开面板。该暴露面由强制 `dashboard.basic_auth` 保护，未配置时上游拒绝启动而非降级为无鉴权。换到公共网络前更换口令，并注意面板具备调用 LLM 与执行工具的权限。
+validator 水位在 `validator-state` named volume。第一次创建与已有水位恢复要区别处理；不要删除水位或锁文件来“修复”拒绝，更不能拿空卷替代已初始化状态。
 
-## 5. 真实 Arduino / LAN 接入前置检查
+## 5. HA 与只读网关
 
-默认 Broker 端口只绑定 loopback，UNO 无法连接，**这是安全默认值而不是完整无线部署**。由平台与网络评审明确实验网络、Broker 主机 LAN 地址、Wi-Fi 频段/认证限制、每节点账号与 Topic ACL、TLS 证书及 Arduino 库支持、防火墙后，再另做经审查的配置变更。不要直接取消端口地址限制并暴露给公网。校园 Wi-Fi 可能有设备隔离、Portal 或认证限制，须先确认使用政策；可选授权的隔离实验 AP。
-
-本 Compose 使用端口映射、不依赖 host networking，便于 macOS/Linux 一致开发；不包括 HA 自动发现网络、多播或 USB 透传。镜像 `2.0`/`stable` 尚非锁定可复现版本，首次成功联调应将所测 tag/digest 记录并固定到 PR 中。
-
-## 6. 停止、数据与验收
+确认端口、证书、账号、目录权限就绪后，部署人员可先启动新项目的 HA 与 Broker：
 
 ```bash
-docker compose -f deploy/compose.yaml --profile platform down
+docker compose --env-file deploy/runtime/secure.env -f deploy/compose.secure.yaml up -d mosquitto home-assistant
 ```
 
-不加 `-v`，保留 Broker named volume；HA 状态在 `deploy/runtime/`。迁移前人工备份并加密，不提交用户数据库、Token 或真实宿舍历史。初始化阶段不执行自动部署或删除数据。
+打开 `http://127.0.0.1:8123`，由用户完成账号和必要 MFA。通过 HA UI 添加 MQTT 集成，Broker 为 `mosquitto:1883`，使用 `xiaoxi_ha_read`。这是后端网络内的认证连接；真实板卡走另外的 TLS 8883。
 
-验收清单：拒绝匿名连接 → 合法账号可订阅/发布 → HA 接收标注模拟的三路数据 → 正常退出/强制断网/遥测停止分别验证 offline/expire → 先验证独立只读执行边界（未实现时到此停止）→ 经人工批准接入 Hermes，只读获取同一实体且拒绝控制 → 记录版本、日志与未验证项。真实端到端需用一个已确认实物传感器另行完成。
+新实例[配置入口](../home-assistant/configuration.secure.example.yaml)加载[真实模板目录](../home-assistant/mqtt/real/node01.yaml)。五个 ID 必须在 UI 核实：
+
+- `sensor.xiaoxi_node01_temperature`
+- `sensor.xiaoxi_node01_humidity`
+- `sensor.xiaoxi_node01_light`
+- `sensor.xiaoxi_node02_ir_event`
+- `sensor.xiaoxi_node01_button_event`
+
+已有实例不可覆盖配置或强行重命名旧实体；本模板仅用于新实例。三路周期读数从 validated topics 接收并约 35 秒过期；两个事件记录最近事件，不是周期采样或空调实际状态。[事件模板](../home-assistant/mqtt/real/events.yaml)不是完整的节点事件 Schema 校验器。
+
+用户创建专用后端 HA Token，私下填入 gateway 的 `backend_token`。HA Token 本身不保证只读；真正的读限制由网关和网络执行。完成文件权限后，再启动 validator/gateway。Hermes 只连接 `http://read-gateway:8080`，网关仅接受固定当前状态 GET，没有历史、预测或服务写端点。
+
+## 6. 本地 Whisper 模型
+
+正式镜像不含权重。使用[固定清单](../deploy/examples/whisper-base.manifest.json)中的公开模型 `Systran/faster-whisper-base`、revision `ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66`，在独立受信主机预先准备四个文件到 `deploy/runtime/secure/whisper-base/`。固定版本源为[模型仓库](https://huggingface.co/Systran/faster-whisper-base/tree/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66)，不是运行时放开下载域名。
+
+`model.bin` 约 145 MB，清单中的 SHA-256 来自公开 LFS 元数据；三份小文件使用该版本发布的 Git blob SHA-1 与大小，Git blob 哈希包含头部，不能拿普通 `sha1sum` 直接比较。本轮只核对公开元数据，本机直连小文件发生 TLS 失败，未读取现有私有模型或下载权重，不能声称实际模型文件已验证。
+
+准备完成后离线验证：
+
+```bash
+python3 -B scripts/verify_whisper_model.py deploy/runtime/secure/whisper-base
+```
+
+校验器只读四个规定文件，不下载、不加载模型。通过只证明文件与清单一致，不代表准确率、耗时或麦克风链路已验收。Compose 将目录只读挂到 `/opt/data/whisper-base`，没有文件时不会自动创建空目录来掩盖缺项。运行中的 Hermes 出口不允许 Hugging Face；缓存缺失时上游可能尝试下载，仍应由网络边界拒绝。
+
+## 7. Hermes 人格、工具与语音配置
+
+在独立新项目就绪后启动其余角色。使用官方 `hermes` 入口，以正常 UID 降权路径操作目标 profile，不直接运行安装目录绕过入口，不复制旧容器配置/账号库。模型 Key、HA 查询配置和仪表盘登录由用户通过官方配置入口私下完成。
+
+确认实际 profile 的 `HASS_URL=http://read-gateway:8080`、`HASS_TOKEN` 为查询凭据。活动 profile 的显式值可能覆盖进程环境；不能只看 Compose 环境就宣布迁移成功。后端 HA Token 不进入该 profile。
+
+下列无秘密设置通过官方 `hermes --profile default config set` 配置到目标实例：
+
+```text
+platform_toolsets.cli = ["homeassistant"]
+terminal.cwd = /opt/xiaoxi/workspace
+model.provider = deepseek
+model.default = deepseek-chat
+model.base_url = https://api.deepseek.com/v1
+tts.provider = edge
+tts.edge.voice = zh-CN-XiaoxiaoNeural
+stt.local.model = /opt/data/whisper-base
+stt.language = zh
+```
+
+这些是键/值清单，不是可直接粘贴的 shell 脚本。实际命令示例为 `hermes --profile default config set terminal.cwd /opt/xiaoxi/workspace`。上游原生 HA 工具集同时含读与服务工具，网关继续拒绝写操作。`platform_toolsets.homeassistant` 不能替代实际仪表盘 TUI 使用的 `platform_toolsets.cli`。人格已在镜像 `/opt/xiaoxi/workspace/AGENTS.md`，设置工作区后核实加载，并明确创建**新会话**；刷新可能恢复旧提示和旧工具集合。
+
+出口仅允许既有五个 HTTPS 主机：Nous 的 `inference-api.nousresearch.com`、`portal.nousresearch.com`，DeepSeek 的 `api.deepseek.com`，Edge 的 `speech.platform.bing.com`、`api.msedgeservices.com`。源代码固定限制端口与地址，不解密 TLS。若 TUN/Fake-IP 返回特殊网段，先核对 DNS/路由；不得关闭地址验证、TLS 或临时放开任意域名。
+
+浏览器使用 `http://127.0.0.1:9119` 登录，刷新前端并开新会话。其他主机的麦克风通常还要求 HTTPS 安全上下文。用户主动开启语音、同意麦克风权限并检查实际声线显示；物理按钮不能替代浏览器授权。云端失败应显示错误，只有明确选择本机朗读才使用浏览器声音。真实录音、实际播放音质及按钮长按交互仍须现场核对。
+
+## 8. 新实例验收与数据保护
+
+按次序记录独立证据：合法/非法 MQTT 与 CA/地址 → 真实串口/遥测一致 → validator 转发和恢复 → HA 实体/35 秒过期 → 网关固定范围与拒绝写 → Hermes 新会话实际工具 → 麦克风/朗读与按钮 → 电源/断网恢复。镜像构建、静态模板、合成 fixture 和真实物理结果分别记录。
+
+红外节点发送回执不证明空调响应；本模板没有自动空调控制入口，也不因已有发送函数就新增授权。历史/预测能力见[单独方案](history-and-kalman.md)，不通过放开网关历史接口临时补齐。
+
+HA、Hermes、Broker 和 validator 的持久卷均不得随意清空。已有实例迁移先做授权备份与恢复计划，不执行 `down -v` 或覆盖旧配置。公开课程材料只保留审查后的去敏摘要，原始记录、账号、证书私钥和数据库留在本地忽略目录。

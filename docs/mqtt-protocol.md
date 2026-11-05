@@ -1,25 +1,30 @@
 # MQTT 通信协议 v1
 
-状态：**v1.0 初始契约，待联合评审后冻结**。修改须经 PR、兼容性说明并同步 Schema、示例、固件、HA 与测试。优先单宿舍多节点，不做动态服务发现或复杂 RPC。
+状态：**v1.0 遥测契约与当前实现说明**。修改须经 PR、兼容性说明并同步 Schema、示例、固件、HA 与测试。周期遥测、事件和实验命令分开描述；事件和 C3 命令不能冒用遥测 Schema 的完整校验结论。
 
-## 1. 命名与边界
+## 1. 命名与实际路径
 
-前缀 `xiaoxi/dorm`，节点 ID 匹配 `node[0-9]{2,3}`（如 `node01`），统一分配且不得重复。宿舍地址、姓名、学号不能成为 ID。MQTT 客户端 ID 也必须唯一，例如 `xiaoxi-node01`；模拟器默认用 `node90`，避免冒充真实设备。
+前缀 `xiaoxi/dorm`，节点 ID 匹配 `node[0-9]{2,3}`。真实节点为 `node01` / `node02`，模拟器默认 `node90`；ID 不包含宿舍地址、姓名或学号。MQTT 客户端 ID 必须唯一。
 
-| Topic | 发布方 → 订阅方 | QoS（发布 / 订阅） | Retain |
-| --- | --- | --- | --- |
-| `xiaoxi/dorm/<node_id>/telemetry` | 节点 → HA、分析只读采集器 | 0 / 1（实际不高于 0） | 否 |
-| `xiaoxi/dorm/<node_id>/status` | 节点/LWT → HA、分析 | 1 / 1；库受限时发布 0 | 是 |
-| `xiaoxi/dorm/<node_id>/event` | 节点 → 确定性事件处理器 | 1 / 1；库受限时发布 0 | 否 |
-| `xiaoxi/dorm/<node_id>/command` | HA → 节点 | 1 / 1 | **否** |
+| Topic | 当前路径 | 发布 QoS / Retain |
+| --- | --- | --- |
+| `xiaoxi/dorm/node01/telemetry` | UNO → 校验器 | 0 / 否 |
+| `xiaoxi/dorm/node01/status` | UNO/LWT → 校验器 | 主动发布 0、LWT 1 / 是 |
+| `xiaoxi/validated/node01/telemetry` | 校验器 → HA | 0 / 否 |
+| `xiaoxi/validated/node01/status` | 校验器 → HA | 0 / 是 |
+| `xiaoxi/dorm/node01/event` | UNO 按钮 → HA 事件实体 | 0 / 否 |
+| `xiaoxi/dorm/node02/event` | C3 红外/诊断 → HA 事件实体 | 0 / 否 |
+| `xiaoxi/dorm/node02/status` | C3/LWT → HA | 主动发布 0、LWT 1 / 是 |
+| `xiaoxi/dorm/node02/command` | 受限的人工实验发布方 → C3 | 本项目历史单次测试使用 0 / 否；正式 ACL 不授予发布方 |
+| `xiaoxi/dorm/node90/telemetry` 等 | 显式模拟器 → 开发模板 | 与真实数据分开，`simulated=true` |
 
-遥测每 10 秒一次为初始建议，可配置。QoS 0 适合课程实时采样；接受丢失并用序列号评估，不声称可靠存储。QoS 1 可能重复，不等于恰好一次。固件选 MQTT 库前验证 UNO R4 支持与 QoS 能力（某些库仅支持 QoS 0 发布），记录降级，不把它隐藏成 QoS 1。默认不自动补传历史数据。
+UNO 周期遥测每 10 秒产生一次；QoS 0 接受丢失，不能称为可靠归档。订阅 QoS 1 也不能把 QoS 0 发布提升为 QoS 1；QoS 1 不等于恰好一次。默认不补传历史。
 
-MQTT 3.1.1 足够。报文 UTF-8 JSON，建议不超过 1024 字节；固件明确配置收发缓冲区并测量内存。合规接收端须拒绝无效 JSON、错误版本、Topic 与 payload 不一致的 node_id；记录原因，不让单条坏消息终止采集。此为实现验收要求，不代表现有 HA YAML 已具备完整 Schema 校验：当前配置仅限受信模拟源并有基础门卫，完整校验/坏消息隔离仍 Planned，真实接入前必须补齐。
+MQTT 3.1.1、UTF-8 JSON。接收端须限制体积、拒绝无效版本和 Topic/node_id 不一致，不让坏消息终止采集。当前真实周期遥测先经 [validator](../services/bridge/validator.py) 的严格解析、Schema/语义、来源与序号检查，再以原 payload 转发；持久状态是防重放高水位，不是遥测数据库。事件仍由独立模板作有限检查，没有宣称同等的完整事件 Schema 校验。
 
-## 2. 遥测契约
+## 2. 周期遥测契约
 
-机器可验证契约：[telemetry.schema.json](../schemas/telemetry.schema.json)。有效模拟示例：[telemetry.simulated.json](../data/samples/telemetry.simulated.json)。
+机器契约为 [telemetry.schema.json](../schemas/telemetry.schema.json)，完整合成样例为 [telemetry.simulated.json](../data/samples/telemetry.simulated.json)。下例同样完全是模拟数据：
 
 ```json
 {
@@ -31,76 +36,75 @@ MQTT 3.1.1 足够。报文 UTF-8 JSON，建议不超过 1024 字节；固件明�
   "simulated": true,
   "temperature": 24.5,
   "humidity": 55.0,
-  "light": 0.5,
-  "rssi": -60,
-  "uptime": 0,
-  "sensor_status": {"temperature": "ok", "humidity": "ok", "light": "ok"}
+  "light": 0.5
 }
 ```
 
-**该例完全为模拟数据，不是采集结果。** 所有七个业务字段（node_id、timestamp、sequence、temperature、humidity、light 及版本）以及 boot_id、simulated 必填。未知字段 v1 拒绝，以避免拼写错误被悄悄吞掉。
+上述九个字段必填，未知字段拒绝。Schema 另允许可选的 `rssi`、`uptime` 和 `sensor_status`；不能因为 JSON 可以扩展就自行增加业务字段。
 
-| 字段 | 类型 / 语义 |
+| 字段 | 类型与语义 |
 | --- | --- |
 | schema_version | 固定字符串 `1.0` |
-| node_id | 必须与 Topic 的节点段相同 |
-| boot_id | 每次进程/设备启动生成新 ID，1–64 位字母数字、`_` 或 `-`；固件实现需验证重启唯一性 |
-| sequence | 非负整数，0 开始每产生一条样本加 1，不因断线而复位；同一次启动不复用；达到 2^32−1 前开启新 boot_id |
-| timestamp | UTC RFC3339 `...Z` 字符串，或 `null`；**未同步时必须为 null** |
-| simulated | 布尔；合成数据 true，真实采样 false，不允许用模拟值填装成真实值 |
-| temperature | 摄氏度数值或 null；不设虚假的已确认传感器量程 |
-| humidity | 相对湿度百分数 0–100 或 null |
-| light | 0–1 归一化光照强度或 null，**不是 lux**；实际硬件确认后记录 ADC 标定方法 |
-| rssi | 可选整数，dBm（−127 到 0） |
-| uptime | 可选非负整数，自启动经过的秒数（固件处理 millis 溢出） |
-| sensor_status | 可选对象，temperature/humidity/light 可分别取 ok、missing、error |
+| node_id | 与原始 Topic 节点段一致 |
+| boot_id | 每次启动的新 ID，1–64 位字母数字、`_` 或 `-`；须验证重启唯一性 |
+| sequence | 非负整数，同一启动不复用；断线不复位；达到 2^32−1 前开启新 boot_id |
+| timestamp | 已确认同步时才可使用 UTC RFC3339 `...Z`；未同步必须为 `null` |
+| simulated | 合成输入 `true`，真实采样 `false`；不能以模拟数字补齐真实通道 |
+| temperature | 摄氏度数值或 `null`；协议范围不代表传感器计量精度 |
+| humidity | 相对湿度 0–100% 或 `null` |
+| light | 0–1 无量纲相对亮度或 `null`，不是 lux；当前 LM393 为逆向 10 bit ADC 归一化 |
+| rssi | 可选整数，−127 至 0 dBm |
+| uptime | 可选非负整数，自启动经过的秒数 |
+| sensor_status | 可选通道对象，值为 `ok`、`missing`、`error` |
 
-没有安装的传感器也保留字段，设为 null，可标记 missing。采集失败设 null/error，不能以 0 伪装缺失；禁止 NaN/Infinity。存在 sensor_status 时，ok 必须有数值，missing/error 必须为 null（接收侧另做语义检查）。单位变化属于协议变化。
+未安装或读取失败仍保留通道并设为 `null`，不能以 0 伪装缺失；禁止 NaN/Infinity。存在 `sensor_status` 时，`ok` 对应数值、`missing/error` 对应 `null`。单位或通道语义改变须同步契约与消费者。
 
-## 3. 时间、重复与丢失
+## 3. 时间、去重与缺失
 
-UNO 不假定存在准确 RTC 或完成 NTP。未同步时间为 null；仅已确认 UTC 同步时使用节点 timestamp。采集服务器到达时产生独立 `received_at`（UTC），原 payload 不变，存为 `{received_at, topic, payload}`。实时 HA 可直接消费传感器值，历史分析的默认时间轴用 received_at，另保留源时间和其质量。
+当前节点不宣称已同步 UTC，`timestamp=null`。HA 实体属性中的 `received_at` 是 HA 接收消息的时间，不是设备精确测量时刻，状态变更时间也不等于最新采样时间。未来历史采集器应另存自己的 `{received_at, topic, payload}`，保留原 payload 和源时间质量；当前没有持续项目归档器。
 
-唯一键 `(node_id, boot_id, sequence)` 用于去重；新 boot_id 切分运行段。按同一运行段序号缺口估计丢失，不能将设备重启误认为丢包。延迟统计见[实验方案](experiments.md)：没有时钟同步不能用 received_at − timestamp 声称单向网络延迟。
+周期遥测按 `(node_id, boot_id, sequence)` 去重；新 boot_id 切分运行段。同一运行段序号缺口可用于估计丢失，设备重启不能算成丢包。若同时归档事件，必须再按 Topic/消息流分开，因为 node01 事件序号与遥测序号独立。
 
-断线期间样本序列仍递增，恢复后发当前样本；v1 不提供持久离线缓存或历史补传。分析保留缺失标记，不伪造恢复的数据。高可靠缓存列为后续改进。
+断线后恢复发送当前样本，不提供持久离线缓存或补传。缺失应保留标记，不在原始层插值；没有可靠时钟同步不能以 `received_at - timestamp` 声称跨设备单向延迟，见[实验方案](experiments.md)。
 
 ## 4. 在线状态与 LWT
 
-在 CONNECT 时设置同一节点 status Topic 的 retained Last Will：
+节点连接前设置 retained Last Will，连接后发送 online；主动离线与异常掉线要区分。合成状态例为：
 
 ```json
 {"schema_version":"1.0","node_id":"node90","state":"offline"}
 ```
 
-连接成功发布 retained `{"schema_version":"1.0","node_id":"node90","state":"online"}`；主动退出先发布 offline，再 DISCONNECT。建议 keepalive 30 秒，实际离线检测时间依 Broker 和网络而定，应测量而非承诺瞬时。LWT 必须在连接前配置。
+keepalive 为约 30 秒，实际 LWT 到达时间依网络与 Broker 行为而定，不能承诺瞬时离线。UNO 的 HA 周期实体还使用 35 秒 `expire_after`：旧 online 状态不能让旧温湿度继续被当成当前值。校验器握手、来源检查与可用状态转发的细节见[桥接说明](../services/bridge/README.md)。
 
-节点指数退避重连（建议 1、2、4…至 60 秒，增加少量抖动），成功后重订阅 command 并重新发 online。retained online 可能因 Broker 重启或非正常断网暂时陈旧，因此 HA 还需遥测超时（初值 35 秒）作为第二重不可用判断，不能把旧读数描述成当前正常。
+仅清理被明确停用节点的 retained 状态，不广泛清空 Broker。事件实体记录最近事件，不能把其 `received_at` 当成周期心跳；事件过旧、不可用和周期读数过期是不同问题。
 
-retained status 中不放固定 boot 时间来假装真实离线时间；采集侧记到达时间。停用设备时由维护者清理 status retained 消息，不广泛清空 Broker。
+## 5. 已实现事件与剩余边界
 
-## 5. 事件（接口预留，Planned）
-
-```json
-{"schema_version":"1.0","node_id":"node01","boot_id":"boot-example","sequence":12,"timestamp":null,"simulated":true,"event_type":"sensor_error","severity":"warning","detail":"temperature unavailable"}
-```
-
-sequence 引用相关样本；首批 event_type 为 sensor_error、network_recovered，severity 为 info/warning/error。阈值异常优先由确定性分析规则生成并标明来源，不逐条调用 LLM。不包含个人行为推断。此例为协议说明，尚无事件发布实现。
-
-## 6. 控制（默认禁用，Planned）
-
-v1 唯一拟开放操作是开发板低压 LED 状态反馈，禁止接市电、门锁、加热器等高风险执行器。
+当前 UNO 发布 `button_single_press`、`button_double_press`、`button_long_press_voice`；C3 发布接收、回环、预览、命令结果及拒绝等事件。共享包络包含版本、node_id、boot_id、该事件流 sequence、`timestamp=null`、`simulated`、event_type、severity 和 detail。下例只用于说明：
 
 ```json
-{"schema_version":"1.0","node_id":"node01","command_id":"demo-001","action":"set_indicator","value":"on","ttl_seconds":10}
+{"schema_version":"1.0","node_id":"node01","boot_id":"example-only","sequence":12,"timestamp":null,"simulated":true,"event_type":"button_single_press","severity":"info","detail":"example_only"}
 ```
 
-value 只接受 on/off。节点用接收时的单调时钟计 TTL（1–30 秒），避免依赖 RTC；它只能限制本地排队时间，不能证明网络中消息的新鲜性。因此 command **不得 retain**，节点使用 clean session，不缓存离线命令，仅支持幂等低风险操作；重复 command_id 不重复执行。过期/未知字段/未知动作拒绝并记录。控制实现前补充 Schema、拒绝测试及执行确认事件，当前不能拿此例宣称可控制。
+事件序号不是相关周期样本的引用。HA [事件模板](../home-assistant/mqtt/real/events.yaml)只做有限元数据检查并保留最近事件；它不证明消息通过完整 JSON Schema、物理手势全通过或空调确已响应。网关在事件不可用时清除投影中的旧事件内容。事件文本仅作数据，不授予控制或扩大访问权限。
 
-Agent 只能通过 HA 已审核的服务控制实体，不能直接向 command Topic 发布。上线前人工确认目标实体与效果、限制域和服务，并准备本地物理停用方法；LLM 提示词不是权限边界。
+阈值异常、稳定归档和提醒服务仍待实现；不逐条调用 LLM，不由事件推断住户作息或身份。
+
+## 6. 控制：现有 C3 实验与只读系统分开
+
+Hermes 仍只能经固定实体网关读取当前状态，没有设备控制服务、Broker 凭据或消息发布通路。正式 [Broker ACL](../deploy/examples/mosquitto-acl.conf)不给 HA 读取账户命令发布权；未来 Agent 控制必须另行完成经 HA 的细粒度执行与验收，不能靠改提示词启用。
+
+C3 固件已有 `ac_preview` / `ac_send` 等实验命令，**没有本地 disarm 门禁**。预览不发射，真实发送选择单协议并调用一次 `sendAc()`；一次库调用可能生成多帧。启动载波校准与 NEC 自检也会发射，详见[C3 说明](../firmware/esp32-c3-ir/README.md)。
+
+当前 C3 使用简化的字符串解析，TTL 仅检查 1–30 秒范围而非消息年龄，最近八个 command_id 仅在 RAM 去重。这些实现不满足完整严格 JSON、持久去重与过期拒绝目标。命令不得 retain，不自动补发或盲重试；已有一次人工授权发送记录不授权下一次发送。节点 ACK/本地回波不是空调状态回读。
+
+旧的 `set_indicator` LED 命令仅是设计预留，不是本轮实现。未来受控路径需独立定义 Schema、授权有效期、幂等、审计、拒绝用例及物理停用方法；门锁、市电、加热负载不属于项目范围。
 
 ## 7. 访问控制与变更
 
-不允许匿名 Broker。每节点账号原则上仅写自身 telemetry/status/event、读自身 command；HA 可读取所有节点并写批准的 command；分析只读 telemetry/status/event。模拟阶段可使用独立实验 Broker，不能把共享开发账号带到真实运行环境。TLS 在跨机器/不可信网络接入前完成；未配 TLS 的 Compose 仅本机隔离调试。
+不允许匿名 Broker。正式模板中节点只写自身状态/数据/事件并按需读自身命令，校验器只读原始 node01 遥测/状态并写对应 validated Topic，HA 读取账户仅订阅所需五类 Topic。真实板卡连接使用验证 CA/地址的 TLS 8883；1883 仅用于受控内部网络或显式本机开发，不作为 TLS 失败回退。
 
-新字段先讨论并更新契约版本与所有消费者；破坏性修改升级主版本，写迁移步骤。未支持版本明确拒绝，不静默解释。
+旧 [开发 Compose](../deploy/compose.yaml) 和 node90 模板保留原模拟用途，正式入口见[部署说明](deployment.md)。本轮没有更改既有生产账号或 ACL；模板权限不能当成现有实例权限已重新验收。
+
+新增字段或动作先更新契约、版本、所有消费者和测试，破坏性变更给迁移步骤；未知版本明确拒绝，不静默解释。
