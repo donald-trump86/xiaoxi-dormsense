@@ -1,0 +1,46 @@
+# Optional learning service. Existing Hermes/HA services keep their networks.
+# Supply an owner-only JSON configuration and pre-initialize the named state volume.
+services:
+  ir-learning:
+    image: ${XIAOXI_IR_RUNTIME_IMAGE:?set a reviewed Python runtime image}
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    restart: unless-stopped
+    command: ["-B", "-m", "ir_learning.server", "--config", "/run/learning/config.json"]
+    environment:
+      PYTHONPATH: /app
+    volumes:
+      - type: bind
+        source: ../services/ir_learning
+        target: /app/ir_learning
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${XIAOXI_IR_LEARNING_CONFIG_DIR:?set the private configuration directory}
+        target: /run/learning
+        read_only: true
+        bind: {create_host_path: false}
+      - ir-learning-data:/state
+    networks: [backend, agent]
+    pids_limit: 32
+    mem_limit: 128m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD, python, -B, -c, "import http.client; c=http.client.HTTPConnection('127.0.0.1',8090,timeout=2); c.request('GET','/health'); assert c.getresponse().status==200"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+networks:
+  backend:
+    external: true
+    name: ${XIAOXI_BACKEND_NETWORK:-deploy_default}
+  agent:
+    external: true
+    name: ${XIAOXI_AGENT_NETWORK:-deploy_agent}
+volumes:
+  ir-learning-data:
+    external: true
+    name: ${XIAOXI_IR_LEARNING_VOLUME:-deploy_ir-learning-data}
