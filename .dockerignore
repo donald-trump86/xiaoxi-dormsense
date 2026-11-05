@@ -1,0 +1,10 @@
+# Runtime image context: deny everything except these first-party files.
+**
+!services/bridge/requirements.txt
+!services/bridge/validator.py
+!services/bridge/read_gateway.py
+!services/bridge/inference_egress.py
+!services/bridge/dashboard_ingress.py
+!scripts/check_repository.py
+!schemas/telemetry.schema.json
+!deploy/images/runtime/Dockerfile
