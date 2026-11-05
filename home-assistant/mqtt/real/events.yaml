@@ -1,0 +1,51 @@
+# Event-driven latest-event records; not appliance state or periodic samples.
+- name: XiaoXi Node02 IR Event
+  unique_id: xiaoxi_node02_ir_event
+  state_topic: xiaoxi/dorm/node02/event
+  value_template: "{% set v = value_json | default({}) %} {{ v.event_type if v is mapping and\n  v.schema_version\
+    \ | default('') == '1.0' and\n  v.node_id | default('') == 'node02' and\n  v.simulated is defined\
+    \ and v.simulated is sameas false and\n  v.event_type is defined and v.event_type is string and\n\
+    \  v.detail is defined and v.detail is string else 'None' }}"
+  qos: 0
+  availability_mode: all
+  availability:
+  - topic: xiaoxi/dorm/node02/status
+    value_template: "{% set v = value_json | default({}) %} {{ v.state if v is mapping and v | length\
+      \ == 3 and\n  v.schema_version | default('') == '1.0' and\n  v.node_id | default('') == 'node02'\
+      \ and\n  v.state | default('') in ['online', 'offline'] else 'offline' }}"
+    payload_available: online
+    payload_not_available: offline
+  json_attributes_topic: xiaoxi/dorm/node02/event
+  json_attributes_template: "{% set v = value_json | default({}) %} {% set valid = v is mapping and\n\
+    \  v.schema_version | default('') == '1.0' and\n  v.node_id | default('') == 'node02' and\n  v.simulated\
+    \ is defined and v.simulated is sameas false and\n  v.boot_id is defined and v.boot_id is string and\n\
+    \  v.sequence is defined and v.sequence is integer and\n  v.sequence is not boolean and\n  v.event_type\
+    \ is defined and v.event_type is string and\n  v.detail is defined and v.detail is string %}\n{% if\
+    \ valid %} {{ {'node_id': 'node02', 'boot_id': v.boot_id, 'sequence': v.sequence,\n  'simulated':\
+    \ v.simulated, 'event_type': v.event_type,\n  'detail': v.detail, 'received_at': utcnow().isoformat()}\
+    \ | to_json }}\n{% else %}{{ {} | to_json }}{% endif %}"
+- name: XiaoXi Node01 Button Event
+  unique_id: xiaoxi_node01_button_event
+  state_topic: xiaoxi/dorm/node01/event
+  value_template: "{% set v = value_json | default({}) %} {{ v.event_type if v is mapping and\n  v.schema_version\
+    \ | default('') == '1.0' and\n  v.node_id | default('') == 'node01' and\n  v.simulated is defined\
+    \ and v.simulated is sameas false and\n  v.event_type is defined and v.event_type is string and\n\
+    \  v.detail is defined and v.detail is string else 'None' }}"
+  qos: 0
+  availability_mode: all
+  availability:
+  - topic: xiaoxi/validated/node01/status
+    value_template: "{% set v = value_json | default({}) %} {{ v.state if v is mapping and v | length\
+      \ == 3 and\n  v.schema_version | default('') == '1.0' and\n  v.node_id | default('') == 'node01'\
+      \ and\n  v.state | default('') in ['online', 'offline'] else 'offline' }}"
+    payload_available: online
+    payload_not_available: offline
+  json_attributes_topic: xiaoxi/dorm/node01/event
+  json_attributes_template: "{% set v = value_json | default({}) %} {% set valid = v is mapping and\n\
+    \  v.schema_version | default('') == '1.0' and\n  v.node_id | default('') == 'node01' and\n  v.simulated\
+    \ is defined and v.simulated is sameas false and\n  v.boot_id is defined and v.boot_id is string and\n\
+    \  v.sequence is defined and v.sequence is integer and\n  v.sequence is not boolean and\n  v.event_type\
+    \ is defined and v.event_type is string and\n  v.detail is defined and v.detail is string %}\n{% if\
+    \ valid %} {{ {'node_id': 'node01', 'boot_id': v.boot_id, 'sequence': v.sequence,\n  'simulated':\
+    \ v.simulated, 'event_type': v.event_type,\n  'detail': v.detail, 'received_at': utcnow().isoformat()}\
+    \ | to_json }}\n{% else %}{{ {} | to_json }}{% endif %}"

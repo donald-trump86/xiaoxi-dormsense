@@ -1,0 +1,170 @@
+# List fragment: append these two dictionaries to the existing mqtt sensor list.
+# Strict schema/sequence validation belongs to the upstream validator.
+# Offline contracts only; HA rendering, registry IDs and expiry need live checks.
+- name: "XiaoXi Node01 Temperature"
+  unique_id: xiaoxi_node01_temperature
+  state_topic: xiaoxi/validated/node01/telemetry
+  value_template: >-
+    {% set v = value_json | default({}) %}
+    {{ v.temperature if v is mapping and
+      v.schema_version | default('') == '1.0' and
+      v.node_id | default('') == 'node01' and
+      v.simulated is defined and v.simulated is sameas false and
+      v.sensor_status is defined and v.sensor_status is mapping and
+      v.sensor_status.temperature | default('') == 'ok' and
+      v.temperature is defined and v.temperature is not none and
+      v.temperature is number and v.temperature is not boolean else 'None' }}
+  unit_of_measurement: "°C"
+  device_class: temperature
+  expire_after: 35
+  qos: 0
+  availability_mode: all
+  availability:
+    - topic: xiaoxi/validated/node01/status
+      value_template: >-
+        {% set v = value_json | default({}) %}
+        {{ v.state if v is mapping and v | length == 3 and
+          v.schema_version | default('') == '1.0' and
+          v.node_id | default('') == 'node01' and
+          v.state | default('') in ['online', 'offline'] else 'offline' }}
+      payload_available: online
+      payload_not_available: offline
+    - topic: xiaoxi/validated/node01/telemetry
+      value_template: >-
+        {% set v = value_json | default({}) %}
+        {{ 'online' if v is mapping and
+          v.schema_version | default('') == '1.0' and
+          v.node_id | default('') == 'node01' and
+          v.simulated is defined and v.simulated is sameas false and
+          v.sensor_status is defined and v.sensor_status is mapping and
+          v.sensor_status.temperature | default('') == 'ok' and
+          v.temperature is defined and v.temperature is not none and
+          v.temperature is number and v.temperature is not boolean else 'offline' }}
+      payload_available: online
+      payload_not_available: offline
+  json_attributes_topic: xiaoxi/validated/node01/telemetry
+  json_attributes_template: >-
+    {% set v = value_json | default({}) %}
+    {% set valid = v is mapping and
+      v.schema_version | default('') == '1.0' and
+      v.node_id | default('') == 'node01' and
+      v.simulated is defined and v.simulated is sameas false and
+      v.boot_id is defined and v.boot_id is string and
+      v.sequence is defined and v.sequence is integer and
+      v.sequence is not boolean %}
+    {% if valid %}
+    {{ {'boot_id': v.boot_id, 'sequence': v.sequence,
+      'simulated': v.simulated, 'received_at': utcnow().isoformat()} | to_json }}
+    {% else %}{{ {} | to_json }}{% endif %}
+
+- name: "XiaoXi Node01 Humidity"
+  unique_id: xiaoxi_node01_humidity
+  state_topic: xiaoxi/validated/node01/telemetry
+  value_template: >-
+    {% set v = value_json | default({}) %}
+    {{ v.humidity if v is mapping and
+      v.schema_version | default('') == '1.0' and
+      v.node_id | default('') == 'node01' and
+      v.simulated is defined and v.simulated is sameas false and
+      v.sensor_status is defined and v.sensor_status is mapping and
+      v.sensor_status.humidity | default('') == 'ok' and
+      v.humidity is defined and v.humidity is not none and
+      v.humidity is number and v.humidity is not boolean else 'None' }}
+  unit_of_measurement: "%"
+  device_class: humidity
+  expire_after: 35
+  qos: 0
+  availability_mode: all
+  availability:
+    - topic: xiaoxi/validated/node01/status
+      value_template: >-
+        {% set v = value_json | default({}) %}
+        {{ v.state if v is mapping and v | length == 3 and
+          v.schema_version | default('') == '1.0' and
+          v.node_id | default('') == 'node01' and
+          v.state | default('') in ['online', 'offline'] else 'offline' }}
+      payload_available: online
+      payload_not_available: offline
+    - topic: xiaoxi/validated/node01/telemetry
+      value_template: >-
+        {% set v = value_json | default({}) %}
+        {{ 'online' if v is mapping and
+          v.schema_version | default('') == '1.0' and
+          v.node_id | default('') == 'node01' and
+          v.simulated is defined and v.simulated is sameas false and
+          v.sensor_status is defined and v.sensor_status is mapping and
+          v.sensor_status.humidity | default('') == 'ok' and
+          v.humidity is defined and v.humidity is not none and
+          v.humidity is number and v.humidity is not boolean else 'offline' }}
+      payload_available: online
+      payload_not_available: offline
+  json_attributes_topic: xiaoxi/validated/node01/telemetry
+  json_attributes_template: >-
+    {% set v = value_json | default({}) %}
+    {% set valid = v is mapping and
+      v.schema_version | default('') == '1.0' and
+      v.node_id | default('') == 'node01' and
+      v.simulated is defined and v.simulated is sameas false and
+      v.boot_id is defined and v.boot_id is string and
+      v.sequence is defined and v.sequence is integer and
+      v.sequence is not boolean %}
+    {% if valid %}
+    {{ {'boot_id': v.boot_id, 'sequence': v.sequence,
+      'simulated': v.simulated, 'received_at': utcnow().isoformat()} | to_json }}
+    {% else %}{{ {} | to_json }}{% endif %}
+
+- name: "XiaoXi Node01 Light"
+  unique_id: xiaoxi_node01_light
+  state_topic: xiaoxi/validated/node01/telemetry
+  value_template: >-
+    {% set v = value_json | default({}) %}
+    {{ v.light if v is mapping and
+      v.schema_version | default('') == '1.0' and
+      v.node_id | default('') == 'node01' and
+      v.simulated is defined and v.simulated is sameas false and
+      v.sensor_status is defined and v.sensor_status is mapping and
+      v.sensor_status.light | default('') == 'ok' and
+      v.light is defined and v.light is not none and
+      v.light is number and v.light is not boolean and
+      0 <= v.light <= 1 else 'None' }}
+  expire_after: 35
+  qos: 0
+  availability_mode: all
+  availability:
+    - topic: xiaoxi/validated/node01/status
+      value_template: >-
+        {% set v = value_json | default({}) %}
+        {{ v.state if v is mapping and v | length == 3 and
+          v.schema_version | default('') == '1.0' and
+          v.node_id | default('') == 'node01' and
+          v.state | default('') in ['online', 'offline'] else 'offline' }}
+      payload_available: online
+      payload_not_available: offline
+    - topic: xiaoxi/validated/node01/telemetry
+      value_template: >-
+        {% set v = value_json | default({}) %}
+        {{ 'online' if v is mapping and
+          v.schema_version | default('') == '1.0' and
+          v.node_id | default('') == 'node01' and
+          v.simulated is defined and v.simulated is sameas false and
+          v.sensor_status is defined and v.sensor_status is mapping and
+          v.sensor_status.light | default('') == 'ok' and
+          v.light is defined and v.light is not none and
+          v.light is number and v.light is not boolean and
+          0 <= v.light <= 1 else 'offline' }}
+      payload_available: online
+      payload_not_available: offline
+  json_attributes_topic: xiaoxi/validated/node01/telemetry
+  json_attributes_template: >-
+    {% set v = value_json | default({}) %}
+    {% set valid = v is mapping and
+      v.schema_version | default('') == '1.0' and
+      v.node_id | default('') == 'node01' and
+      v.simulated is defined and v.simulated is sameas false and
+      v.boot_id is defined and v.boot_id is string and
+      v.sequence is defined and v.sequence is integer and
+      v.sequence is not boolean %}
+    {% if valid %}
+    {{ {'boot_id': v.boot_id, 'sequence': v.sequence,
+      'simulated': v.simulated, 'received_at': utcnow().isoformat()} | to_json }}
+    {% else %}{{ {} | to_json }}{% endif %}
