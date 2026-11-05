@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "verified_date": "2026-11-05",
+  "base_image": "nousresearch/hermes-agent@sha256:39c4ac5a8eaecddc525cd680eb4bda1143f2b12e8f21e2d63c2d5d471a8390c8",
+  "target": {
+    "python": "3.13.5",
+    "platform": "Linux aarch64"
+  },
+  "evidence": "Official PyPI release JSON, read through web_fetch and again from an isolated pinned-image container. Artifact hashes below are PyPI metadata; they are not an assertion that wheel bytes were downloaded or installed during this check.",
+  "initial_build_failure": {
+    "message": "Because there is no version of ctranslate2==4.8.5",
+    "interpretation": "The initial default resolver could not find this release. Official PyPI JSON and isolated resolution with a clean environment and explicit official index both succeeded. The default resolver's exact failure cause remains unproven; no environment or application configuration was inspected."
+  },
+  "upstream_dependency_conflict": {
+    "pristine_check_exit_code": 1,
+    "diagnostic": "The package `msal` requires `cryptography>=2.5,<49`, but `50.0.0` is installed",
+    "baseline_packages": {"msal": "1.36.0", "cryptography": "50.0.0"},
+    "msal_requirement_metadata": "cryptography<49,>=2.5",
+    "verification": "Reproduced against the pristine pinned image in a network-disabled, read-only, non-root, mount-free temporary container. Only public package metadata and uv pip check output were queried; no application/config/auth reads. The new recorder also passed against that image.",
+    "build_gate": "check_voice_dependencies.py runs global uv pip check before and after installation, accepts only this exact baseline diagnostic and these exact package versions, and requires identical snapshots. Any new/changed conflict, missing diagnostics, checker error or unknown output fails. It then verifies all 35 locked versions and imports all four libraries offline. No unrelated MSAL/cryptography upgrade or downgrade.",
+    "limitation": "Passing the baseline comparison does not mean globally compatible dependencies: this known upstream conflict remains. Successful post-install comparison and imports are recorded separately below."
+  },
+  "build_validation": {
+    "status": "passed",
+    "source": "Parent actual build job bash-03e7cd3d9aeb4898 exited 0 on 2026-11-05; hermes-build-verified.log records baseline and voice gates at lines 33 and 71-72.",
+    "image_tag": "xiaoxi/hermes:formal",
+    "source_guards": "All six original hashes, exact patch application and result hashes passed.",
+    "dependencies": "All 35 hash-locked installations and installed versions passed. Global pip-check diagnostics exactly matched the recorded single pristine MSAL/cryptography conflict; all four voice libraries imported successfully with network disabled.",
+    "frontend": "npm run build (tsc and Vite) exited 0; Vite build time 1.84 seconds. Existing upstream node_modules only, network disabled, no npm install.",
+    "scope": "Actual parent image build evidence, distinct from this child's 26 Python and 9 callback offline regressions. No deployment, model-byte verification/loading, transcription, browser/microphone or subjective audio acceptance."
+  },
+  "lock": {
+    "path": "requirements-voice.lock",
+    "input": "requirements-voice.txt",
+    "base_constraints": "requirements-voice-base.txt",
+    "constrained_existing_packages": 21,
+    "resolved_packages": 35,
+    "generator": "uv 0.11.6 (aarch64-unknown-linux-musl)",
+    "index": "https://pypi.org/simple",
+    "arguments": [
+      "pip", "compile", "--no-config", "--default-index", "https://pypi.org/simple",
+      "--python", "/opt/hermes/.venv/bin/python", "--generate-hashes", "--no-header",
+      "--no-annotate", "--no-cache", "--no-progress", "--no-python-downloads",
+      "--constraint", "base.txt", "voice.in"
+    ],
+    "generation_environment": "PATH=/opt/hermes/.venv/bin:/usr/local/bin:/usr/bin:/bin; HOME=/tmp; TMPDIR=/tmp; LANG=C.UTF-8. No other environment variables passed to uv.",
+    "generation_inputs": "voice.in contains requirements-voice.txt; base.txt contains only versions of the named voice-graph packages present in the pristine pinned image, queried with importlib.metadata. No global package freeze or application import was used.",
+    "installation": "Install the complete lock with --require-hashes --no-deps; never sync or uninstall unrelated base packages. Build must pass the strict offline before/after global dependency-conflict baseline comparison, all 35 installed-version checks, and actual imports of all four libraries."
+  },
+  "direct_dependencies": [
+    {
+      "name": "edge-tts",
+      "version": "7.3.1",
+      "source_url": "https://pypi.org/pypi/edge-tts/7.3.1/json",
+      "requires_python": ">=3.7",
+      "filename": "edge_tts-7.3.1-py3-none-any.whl",
+      "sha256": "2a3c79d6235a7a736d681233823ce5492e829b43eb47beae49aa181237a8f9a4",
+      "url": "https://files.pythonhosted.org/packages/35/86/3b97d755992777d5a9ca0e45a8ec96cc9858b2d6dd8f65f3f688d60e8709/edge_tts-7.3.1-py3-none-any.whl",
+      "upload_time": "2026-10-13T18:22:51.772758Z",
+      "yanked": false
+    },
+    {
+      "name": "faster-whisper",
+      "version": "1.2.1",
+      "source_url": "https://pypi.org/pypi/faster-whisper/1.2.1/json",
+      "requires_python": ">=3.9",
+      "ctranslate2_requirement": ">=4.0,<5",
+      "filename": "faster_whisper-1.2.1-py3-none-any.whl",
+      "sha256": "79a66ad50688c0b794dd501dc340a736992a6342f7f95e5811be60b5224a26a7",
+      "url": "https://files.pythonhosted.org/packages/05/99/49ee85903dee060d9f08297b4a342e5e0bcfca2f027a07b4ee0a38ab13f9/faster_whisper-1.2.1-py3-none-any.whl",
+      "upload_time": "2025-10-31T11:35:47.794651Z",
+      "yanked": false
+    },
+    {
+      "name": "ctranslate2",
+      "version": "4.8.5",
+      "source_url": "https://pypi.org/pypi/ctranslate2/4.8.5/json",
+      "requires_python": ">=3.9",
+      "filename": "ctranslate2-4.8.5-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "sha256": "61b7297633b4a26eb79c53830438de792c0721a45d121a2217b27c7f7af53743",
+      "url": "https://files.pythonhosted.org/packages/2b/29/2eed008e7aa440f364856e0140c177a0d7b14833e65987327f792c8048f9/ctranslate2-4.8.5-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl",
+      "upload_time": "2026-11-02T18:45:16.536841Z",
+      "yanked": false
+    },
+    {
+      "name": "zhconv",
+      "version": "1.4.1",
+      "source_url": "https://pypi.org/pypi/zhconv/1.4.1/json",
+      "requires_python": null,
+      "filename": "zhconv-1.4.1-py2.py3-none-any.whl",
+      "sha256": "6ef421829768a5a0e1228040049ccf310a149dd3f11ce618a12ab2401b681a4a",
+      "url": "https://files.pythonhosted.org/packages/10/f5/d9dee803d46ecc0f2d6723b58f0772fe1ef062be326250ca44030ead5983/zhconv-1.4.1-py2.py3-none-any.whl",
+      "upload_time": "2020-04-06T05:12:20.810196Z",
+      "yanked": false
+    }
+  ]
+}
