@@ -1,0 +1,3 @@
+# Unified-diff context blank lines carry a required single-space prefix.
+# Preserve the hash-guarded patch bytes; keep other whitespace checks active.
+hermes/patches/hermes.patch whitespace=-blank-at-eol,-blank-at-eof

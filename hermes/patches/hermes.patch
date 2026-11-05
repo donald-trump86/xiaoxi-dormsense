@@ -1,0 +1,695 @@
+--- a/hermes_cli/web_routers/audio.py
++++ b/hermes_cli/web_routers/audio.py
+@@ -281,12 +281,13 @@
+ 
+ 
+ @router.post("/api/audio/speak")
+-async def speak_text(payload: TTSSpeakRequest, profile: Optional[str] = None):
++async def speak_text(payload: TTSSpeakRequest, profile: Optional[str] = None, voice: Optional[str] = None):
+     """Synthesize speech and return audio as base64 data URL.
+ 
+     Used by the desktop voice-conversation mode to play back assistant
+     responses without exposing the on-disk file path; reuses the TTS provider
+-    chain configured under ``tts.`` in config.yaml.
++    chain configured under ``tts.`` in config.yaml. An explicit ``voice`` selects
++    that Edge voice for this request only; no voice preserves configured routing.
+     """
+     text = (payload.text or "").strip()
+     if not text:
+@@ -297,13 +298,20 @@
+     with http_failure("Desktop voice TTS failed", 500, "Speech synthesis failed"):
+         from tools.tts_tool import text_to_speech_tool
+ 
+-        result_json = await _run_config_scoped(profile, lambda: text_to_speech_tool(text))
++        def _invoke_tts():
++            if voice is not None:
++                return text_to_speech_tool(text, provider="edge", edge_voice=voice)
++            return text_to_speech_tool(text)
++
++        result_json = await _run_config_scoped(profile, _invoke_tts)
+ 
+     try:
+         result = json.loads(result_json) if isinstance(result_json, str) else result_json
+     except Exception:
+         raise HTTPException(status_code=500, detail="Invalid TTS response")
+ 
++    if not isinstance(result, dict):
++        raise HTTPException(status_code=500, detail="Invalid TTS response")
+     if not result.get("success"):
+         raise HTTPException(
+             status_code=400, detail=result.get("error") or "Speech synthesis failed",
+@@ -330,10 +338,12 @@
+     except OSError as exc:
+         raise HTTPException(status_code=500, detail=f"Could not read audio: {exc}")
+ 
++    if voice is not None and (result.get("provider") != "edge" or result.get("voice") != voice):
++        raise HTTPException(status_code=502, detail="Requested Edge voice was not used")
+     encoded = base64.b64encode(audio_bytes).decode("ascii")
+     return {
+         "ok": True, "data_url": f"data:{mime_type};base64,{encoded}", "mime_type": mime_type,
+-        "provider": result.get("provider"),
++        "provider": result.get("provider"), "voice": result.get("voice"),
+     }
+ 
+ 
+@@ -536,3 +546,35 @@
+         pump.cancel()
+         with contextlib.suppress(Exception):
+             await ws.close()
++
++
++@router.get("/api/audio/button-event")
++async def get_button_event(profile: Optional[str] = None):
++    """Return latest node01 physical button event from read-gateway."""
++    def _fetch_btn() -> Dict[str, Any]:
++        from hermes_cli.config import get_env_value
++        from agent.secret_scope import get_secret
++        token = (get_secret("HASS_TOKEN") or get_env_value("HASS_TOKEN") or os.environ.get("HASS_TOKEN") or "").strip()
++        base_url = (get_secret("HASS_URL") or get_env_value("HASS_URL") or os.environ.get("HASS_URL") or "http://read-gateway:8080").rstrip("/")
++        url = base_url + "/api/states/sensor.xiaoxi_node01_button_event"
++        req = urllib.request.Request(
++            url,
++            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
++        )
++        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
++        with opener.open(req, timeout=1.5) as resp:
++            data = json.loads(resp.read().decode("utf-8"))
++        attrs = data.get("attributes") or {}
++        return {
++            "ok": True,
++            "state": data.get("state"),
++            "boot_id": attrs.get("boot_id"),
++            "sequence": attrs.get("sequence"),
++            "detail": attrs.get("detail"),
++            "received_at": attrs.get("received_at"),
++        }
++
++    try:
++        return await _run_config_scoped(profile, _fetch_btn)
++    except Exception:
++        return {"ok": False, "state": "unavailable", "sequence": None}
+--- a/tools/tts_tool.py
++++ b/tools/tts_tool.py
+@@ -42,7 +42,8 @@
+     _repair_ogg_container, _resolve_audio_delivery_profile, _split_text_for_tts)
+ from tools.tts_tool_providers import (
+     _generate_edge_tts, _generate_elevenlabs, _generate_gemini_tts, _generate_minimax_tts,
+-    _generate_mistral_tts, _generate_xai_tts, _resolve_minimax_tts_runtime)
++    _generate_mistral_tts, _generate_xai_tts, _resolve_minimax_tts_runtime,
++    DEFAULT_EDGE_VOICE, EDGE_BROWSER_VOICES)
+ from tools.tts_tool_local import _generate_kittentts, _generate_neutts, _generate_piper_tts
+ from tools.tts_tool_plugins import (
+     _dispatch_to_plugin_provider, _plugin_provider_is_available,
+@@ -213,7 +214,7 @@
+         available, _label, _generator, missing_error = entry
+         return provider, (_error_json(missing_error) if available is not None and not available() else None)
+     if _importable(_import_edge_tts):
+-        return provider, None  # Edge default; the reported provider stays as configured
++        return "edge", None
+     if _check_neutts_available():
+         logger.info("Edge TTS not available, falling back to NeuTTS (local)...")
+         return "neutts", None
+@@ -373,6 +374,10 @@
+         return json.dumps({
+             "success": True, "file_path": file_str, "media_tag": _media_tag([file_str], voice_compatible),
+             "provider": provider, "voice_compatible": voice_compatible,
++            "voice": (
++                (tts_config.get("edge") or {}).get("voice", DEFAULT_EDGE_VOICE)
++                if provider == "edge" else None
++            ),
+         }, ensure_ascii=False)
+     except ValueError as e:
+         return _tool_failure("TTS configuration error", provider, e)
+@@ -418,7 +423,8 @@
+ 
+ def text_to_speech_tool(
+     text: str, output_path: Optional[str] = None, speed: Optional[float] = None,
+-    instructions: Optional[str] = None, provider: Optional[str] = None) -> str:
++    instructions: Optional[str] = None, provider: Optional[str] = None,
++    *, edge_voice: Optional[str] = None) -> str:
+     """Convert text to speech with long-form chunking; returns the JSON result envelope.
+ 
+     Text is normalized, split into provider-safe chunks (never silently truncated), synthesized
+@@ -433,7 +439,16 @@
+         text = text.strip()
+     if not text:
+         return tool_error("Text is empty after TTS cleanup", success=False)
++    if edge_voice is not None and edge_voice not in EDGE_BROWSER_VOICES:
++        return tool_error("Unsupported Edge voice selection", success=False)
+     tts_config, provider = _apply_call_overrides(_load_tts_config(), speed, provider)
++    if edge_voice is not None:
++        # A web voice selection is explicit Edge consent, independent of global config.
++        # Copy both dicts: load_config may cache and share the nested Edge section.
++        tts_config = {**tts_config, "edge": {**(tts_config.get("edge") or {}), "voice": edge_voice}}
++        provider = "edge"
++        if not _importable(_import_edge_tts):
++            return tool_error("Selected Edge voice is unavailable: edge-tts is not installed", success=False)
+     command_provider_config = _resolve_command_provider_config(provider, tts_config)
+     max_len = _resolve_max_text_length(provider, tts_config)
+     chunks = _split_text_for_tts(text, max_len)
+@@ -465,6 +480,7 @@
+             "success": True, "file_path": final_paths[0], "file_paths": final_paths,
+             "media_tag": _media_tag(final_paths, voice_compatible),
+             "provider": chunk_results[0].get("provider", provider), "voice_compatible": voice_compatible,
++            "voice": chunk_results[0].get("voice"),
+             "chunk_count": len(chunks), "delivery_file_count": len(final_paths),
+             "combined_chunks": bool(combined_chunks),
+             "delivery_profile": {
+--- a/tools/tts_tool_providers.py
++++ b/tools/tts_tool_providers.py
+@@ -26,6 +26,12 @@
+ logger = logging.getLogger("tools.tts_tool")
+ 
+ DEFAULT_EDGE_VOICE = "en-US-AriaNeural"
++# Explicit web selections; configured/default voices keep their existing behavior.
++EDGE_BROWSER_VOICES = frozenset({
++    "zh-CN-XiaoxiaoNeural", "zh-CN-shaanxi-XiaoniNeural",
++    "zh-TW-HsiaoChenNeural", "zh-TW-HsiaoYuNeural",
++    "zh-CN-liaoning-XiaobeiNeural", "zh-HK-HiuMaanNeural", "zh-CN-YunxiNeural",
++})
+ DEFAULT_ELEVENLABS_VOICE_ID = "pNInz6obpgDQGcFmaJgB"  # Adam
+ DEFAULT_ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
+ DEFAULT_ELEVENLABS_STREAMING_MODEL_ID = "eleven_flash_v2_5"
+@@ -197,10 +203,13 @@
+     edge_tts = _origin()._import_edge_tts()
+     edge_config = tts_config.get("edge") or {}
+     speed = float(edge_config.get("speed", tts_config.get("speed", 1.0)))
+-    kwargs = {"voice": edge_config.get("voice", DEFAULT_EDGE_VOICE)}
++    voice = edge_config.get("voice", DEFAULT_EDGE_VOICE)
++    clean_text = re.sub(r"[`*_#~>]+", "", text)
++    clean_text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", clean_text).strip() or text
++    kwargs = {"voice": voice}
+     if speed != 1.0:
+         kwargs["rate"] = f"{round((speed - 1.0) * 100):+d}%"
+-    await edge_tts.Communicate(text, **kwargs).save(output_path)
++    await edge_tts.Communicate(clean_text, **kwargs).save(output_path)
+     return output_path
+ 
+ 
+--- a/tools/transcription_local.py
++++ b/tools/transcription_local.py
+@@ -255,7 +255,14 @@
+                          getattr(segment, "avg_logprob", float("nan")))
+             continue
+         kept.append(segment.text.strip())
+-    return " ".join(kept).strip()
++    out = " ".join(kept).strip()
++    if out:
++        try:
++            import zhconv
++            out = zhconv.convert(out, "zh-cn")
++        except Exception:
++            pass
++    return out
+ 
+ 
+ def _transcribe_local_command(
+--- a/web/src/components/ChatSidebar.tsx
++++ b/web/src/components/ChatSidebar.tsx
+@@ -34,7 +34,7 @@
+ import { ReasoningPicker } from '@/components/ReasoningPicker'
+ import { GatewayClient, type ConnectionState } from '@/lib/gatewayClient'
+ import { EventsFeedClient } from '@/lib/eventsFeedClient'
+-import { api } from '@/lib/api'
++import { api, fetchJSON } from '@/lib/api'
+ import {
+   EVENTS_MAX_RECONNECT_ATTEMPTS,
+   eventsGaveUpMessage,
+@@ -50,7 +50,7 @@
+ import { titleFromSessionInfoPayload } from '@/lib/chat-title'
+ 
+ import { cn } from '@/lib/utils'
+-import { AlertCircle, ChevronDown, KeyRound, RefreshCw } from 'lucide-react'
++import { AlertCircle, ChevronDown, KeyRound, Mic, MicOff, RefreshCw, Volume2, VolumeX } from 'lucide-react'
+ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+ import { useNavigate } from 'react-router'
+ 
+@@ -85,6 +85,7 @@
+   className?: string
+   onDashboardNewSessionRequest?: () => void
+   onSessionTitleChange?: (title: string | null) => void
++  onSendVoiceText?: (text: string) => void
+ }
+ 
+ /** Build the ``session.create`` params for the sidecar session.
+@@ -107,7 +108,8 @@
+   profile,
+   className,
+   onDashboardNewSessionRequest,
+-  onSessionTitleChange
++  onSessionTitleChange,
++  onSendVoiceText
+ }: ChatSidebarProps) {
+   const navigate = useNavigate()
+   // `version` bumps on reconnect (manual button, profile/channel switch) and
+@@ -146,6 +148,259 @@
+   // Short name of a just-saved model awaiting confirm to reload (a fresh chat
+   // session is how the running chat adopts it; we confirm before discarding it).
+   const [pendingReloadModel, setPendingReloadModel] = useState<string | null>(null)
++  const [autoTts, setAutoTts] = useState<boolean>(() => {
++    try { return localStorage.getItem('xiaoxi_auto_tts') !== '0' } catch { return true }
++  })
++  const [ttsSpeaking, setTtsSpeaking] = useState(false)
++  const [micListening, setMicListening] = useState(false)
++  const [ttsVoice, setTtsVoice] = useState<string>(() => {
++    try {
++      return localStorage.getItem('xiaoxi_tts_voice') || 'zh-CN-XiaoxiaoNeural'
++    } catch {
++      return 'zh-CN-XiaoxiaoNeural'
++    }
++  })
++  const [voiceStatus, setVoiceStatus] = useState<string | null>(null)
++  const [playbackSource, setPlaybackSource] = useState<string | null>(null)
++  const [lastReplyText, setLastReplyText] = useState<string>('')
++  const audioRef = useRef<HTMLAudioElement | null>(null)
++  const ttsRequestRef = useRef<AbortController | null>(null)
++  const recognitionRef = useRef<any>(null)
++  const lastBtnEventRef = useRef<string | null>(null)
++
++  const stopSpeaking = useCallback(() => {
++    const request = ttsRequestRef.current
++    ttsRequestRef.current = null
++    request?.abort()
++    if (audioRef.current) {
++      audioRef.current.pause()
++      audioRef.current = null
++    }
++    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
++      window.speechSynthesis.cancel()
++    }
++    setTtsSpeaking(false)
++    setVoiceStatus(null)
++  }, [])
++
++  const speakWithXiaoxi = useCallback(async (rawText: string, overrideVoice?: string) => {
++    const clean = rawText
++      .replace(/```[\s\S]*?```/g, '')
++      .replace(/[*#_`~>-]+/g, ' ')
++      .replace(/\s+/g, ' ')
++      .trim()
++    if (!clean) return
++    stopSpeaking()
++    const request = new AbortController()
++    ttsRequestRef.current = request
++    const isCurrent = () => ttsRequestRef.current === request
++    setTtsSpeaking(true)
++    setPlaybackSource(null)
++    const activeVoice = overrideVoice || ttsVoice || 'zh-CN-XiaoxiaoNeural'
++    if (activeVoice !== 'browser-native') {
++      setVoiceStatus(`Edge 云端合成中：${activeVoice}`)
++      try {
++        const params = new URLSearchParams()
++        if (profile) params.set('profile', profile)
++        params.set('voice', activeVoice)
++        const qs = `?${params.toString()}`
++        const res = await fetchJSON<{
++          ok: boolean; data_url?: string; provider?: string; voice?: string
++        }>(`/api/audio/speak${qs}`, {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json' },
++          signal: request.signal,
++          body: JSON.stringify({ text: clean.slice(0, 800) }),
++        })
++        if (!isCurrent()) return
++        if (!res?.ok || !res.data_url) throw new Error('云端没有返回音频')
++        if (res.provider !== 'edge' || res.voice !== activeVoice) {
++          throw new Error('云端返回的播报来源或声线与选择不一致')
++        }
++        const audio = new Audio(res.data_url)
++        audioRef.current = audio
++        audio.onended = () => {
++          if (!isCurrent()) return
++          ttsRequestRef.current = null
++          audioRef.current = null
++          setTtsSpeaking(false)
++          setVoiceStatus(null)
++        }
++        audio.onerror = () => {
++          if (!isCurrent()) return
++          ttsRequestRef.current = null
++          audioRef.current = null
++          setTtsSpeaking(false)
++          setVoiceStatus('Edge 云端音频播放失败，可重试或手动选择浏览器系统朗读')
++        }
++        await audio.play()
++        if (!isCurrent()) return
++        setPlaybackSource(`Edge 云端 · ${res.voice}`)
++        setVoiceStatus('小西正在播报...')
++      } catch (e) {
++        if (!isCurrent()) return
++        ttsRequestRef.current = null
++        audioRef.current?.pause()
++        audioRef.current = null
++        setTtsSpeaking(false)
++        const detail = e instanceof Error ? e.message : '合成或播放失败'
++        setVoiceStatus(`Edge 云端语音失败：${detail}。可重试或手动选择浏览器系统朗读`)
++      }
++      return
++    }
++    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
++      const utter = new SpeechSynthesisUtterance(clean.slice(0, 500))
++      utter.lang = 'zh-CN'
++      const voices = window.speechSynthesis.getVoices()
++      const nativeVoice = voices.find(v => v.lang.toLowerCase() === 'zh-cn')
++        || voices.find(v => v.lang.toLowerCase().startsWith('zh'))
++      if (nativeVoice) utter.voice = nativeVoice
++      utter.onstart = () => {
++        if (!isCurrent()) return
++        setPlaybackSource(`浏览器系统朗读 · ${nativeVoice?.name || '系统默认（名称未提供）'}`)
++      }
++      utter.onend = () => {
++        if (!isCurrent()) return
++        ttsRequestRef.current = null
++        setTtsSpeaking(false)
++        setVoiceStatus(null)
++      }
++      utter.onerror = ev => {
++        if (!isCurrent()) return
++        ttsRequestRef.current = null
++        setTtsSpeaking(false)
++        setVoiceStatus(`浏览器系统朗读失败：${ev.error}`)
++      }
++      setVoiceStatus('浏览器系统朗读中...')
++      window.speechSynthesis.speak(utter)
++    } else {
++      ttsRequestRef.current = null
++      setTtsSpeaking(false)
++      setVoiceStatus('当前浏览器不支持系统朗读，请选择 Edge 云端声线')
++    }
++  }, [profile, stopSpeaking, ttsVoice])
++
++  // Keep the event subscription stable while voice and auto-play settings change.
++  const voicePlaybackRef = useRef({ autoTts, speakWithXiaoxi })
++  useEffect(() => {
++    voicePlaybackRef.current = { autoTts, speakWithXiaoxi }
++  }, [autoTts, speakWithXiaoxi])
++  useEffect(() => () => stopSpeaking(), [channel, profile, stopSpeaking])
++
++  const toggleVoiceInput = useCallback(() => {
++    if (micListening && recognitionRef.current) {
++      try {
++        if (typeof recognitionRef.current.stop === 'function') {
++          recognitionRef.current.stop()
++        }
++      } catch {}
++      setMicListening(false)
++      return
++    }
++    stopSpeaking()
++    if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' && typeof MediaRecorder !== 'undefined') {
++      void navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
++        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
++          ? 'audio/webm;codecs=opus'
++          : MediaRecorder.isTypeSupported('audio/mp4')
++            ? 'audio/mp4'
++            : ''
++        const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
++        const chunks: BlobPart[] = []
++        recorder.ondataavailable = ev => {
++          if (ev.data && ev.data.size > 0) chunks.push(ev.data)
++        }
++        recorder.onstop = () => {
++          stream.getTracks().forEach(t => t.stop())
++          setMicListening(false)
++          const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
++          if (blob.size < 256) {
++            setVoiceStatus('录音太短，未检测到有效语音')
++            return
++          }
++          setVoiceStatus('本地 Whisper 正在识别语音...')
++          const reader = new FileReader()
++          reader.onloadend = () => {
++            const dataUrl = typeof reader.result === 'string' ? reader.result : ''
++            if (!dataUrl) {
++              setVoiceStatus('录音读取失败')
++              return
++            }
++            const qs = profile ? `?profile=${encodeURIComponent(profile)}` : ''
++            void fetchJSON<{ ok: boolean; transcript?: string }>(`/api/audio/transcribe${qs}`, {
++              method: 'POST',
++              headers: { 'Content-Type': 'application/json' },
++              body: JSON.stringify({ data_url: dataUrl, mime_type: blob.type || 'audio/webm' }),
++            })
++              .then(res => {
++                const text = (res?.transcript || '').trim()
++                if (text) {
++                  setVoiceStatus(`已发送：“${text}”`)
++                  onSendVoiceText?.(text)
++                } else {
++                  setVoiceStatus('未识别到语音内容，请再试一次')
++                }
++              })
++              .catch(err => {
++                setVoiceStatus(`语音识别失败：${err instanceof Error ? err.message : '请求异常'}`)
++              })
++          }
++          reader.readAsDataURL(blob)
++        }
++        recognitionRef.current = recorder
++        recorder.start()
++        setMicListening(true)
++        setVoiceStatus('正在录音，说完后请再点一次结束并发送...')
++      }).catch(err => {
++        setMicListening(false)
++        setVoiceStatus(`麦克风权限提示：${err instanceof Error ? err.message : '无法打开麦克风'}`)
++      })
++      return
++    }
++    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
++    if (!SR) {
++      setVoiceStatus('当前浏览器不支持麦克风录音')
++      return
++    }
++    const rec = new SR()
++    rec.lang = 'zh-CN'
++    rec.interimResults = true
++    rec.continuous = false
++    let finalTranscript = ''
++    rec.onstart = () => {
++      setMicListening(true)
++      setVoiceStatus('请说话（说完自动发送给小西）...')
++    }
++    rec.onresult = (event: any) => {
++      let interim = ''
++      for (let i = event.resultIndex; i < event.results.length; ++i) {
++        const chunk = event.results[i][0]?.transcript || ''
++        if (event.results[i].isFinal) {
++          finalTranscript += chunk
++        } else {
++          interim += chunk
++        }
++      }
++      const preview = (finalTranscript || interim).trim()
++      if (preview) setVoiceStatus(`识别中：${preview}`)
++    }
++    rec.onerror = (ev: any) => {
++      setMicListening(false)
++      setVoiceStatus(`语音识别提示：${ev?.error || '未检测到语音'}`)
++    }
++    rec.onend = () => {
++      setMicListening(false)
++      const text = finalTranscript.trim()
++      if (text) {
++        setVoiceStatus(`已发送：“${text}”`)
++        onSendVoiceText?.(text)
++      } else {
++        setVoiceStatus(null)
++      }
++    }
++    recognitionRef.current = rec
++    rec.start()
++  }, [micListening, onSendVoiceText, profile, stopSpeaking])
+ 
+   const refreshEffectiveModel = useCallback(() => {
+     void api
+@@ -335,6 +590,16 @@
+     const offNewSession = feed.on('dashboard.new_session_requested', () => {
+       onDashboardNewSessionRequest?.()
+     })
++    const offMsgComplete = feed.on('message.complete', ev => {
++      const payload = ev.payload as { text?: string; status?: string } | undefined
++      const txt = (payload?.text || '').trim()
++      if (txt && payload?.status === 'complete') {
++        setLastReplyText(txt)
++        if (voicePlaybackRef.current.autoTts) {
++          void voicePlaybackRef.current.speakWithXiaoxi(txt)
++        }
++      }
++    })
+ 
+     void connect()
+ 
+@@ -348,9 +613,54 @@
+       offState()
+       offSessionInfo()
+       offNewSession()
++      offMsgComplete()
+       feed.close()
+     }
+   }, [channel, feed, onDashboardNewSessionRequest, onSessionTitleChange, version])
++
++  // Poll UNO physical button events (D2/D3/D4) every 1.2s for hands-free voice/query trigger.
++  useEffect(() => {
++    let cancelled = false
++    const pollBtn = async () => {
++      try {
++        const q = profile ? `?profile=${encodeURIComponent(profile)}` : ''
++        const res = await fetchJSON<{
++          ok: boolean
++          state?: string
++          boot_id?: string
++          sequence?: number | null
++        }>(`/api/audio/button-event${q}`)
++        if (cancelled || !res?.ok || res.sequence === null || res.sequence === undefined) return
++        const key = `${res.boot_id || ''}:${res.sequence}`
++        if (lastBtnEventRef.current === null) {
++          lastBtnEventRef.current = key
++          return
++        }
++        if (lastBtnEventRef.current !== key) {
++          lastBtnEventRef.current = key
++          if (res.state === 'button_long_press_voice') {
++            setAutoTts(true)
++            try { localStorage.setItem('xiaoxi_auto_tts', '1') } catch {}
++            setVoiceStatus('物理按钮长按：开启小西语音对讲...')
++            if (!micListening) toggleVoiceInput()
++          } else if (res.state === 'button_double_press') {
++            setAutoTts(true)
++            try { localStorage.setItem('xiaoxi_auto_tts', '1') } catch {}
++            setVoiceStatus('物理按钮双击：查询寝室环境...')
++            onSendVoiceText?.('现在室内温度、湿度和光照分别是多少？')
++          }
++        }
++      } catch {
++        // ignore transient poll errors
++      }
++    }
++    void pollBtn()
++    const timer = window.setInterval(pollBtn, 1200)
++    return () => {
++      cancelled = true
++      window.clearInterval(timer)
++    }
++  }, [micListening, onSendVoiceText, profile, toggleVoiceInput])
+ 
+   // Seed the badge on mount and re-read it whenever the sockets are rebuilt
+   // (a profile/channel switch bumps `version`).
+@@ -406,6 +716,83 @@
+         <Badge tone={STATE_TONE[state]} className="shrink-0">
+           {STATE_LABEL[state]}
+         </Badge>
++      </Card>
++
++      <Card className="flex flex-col gap-2 px-3 py-2.5">
++        <div className="flex items-center justify-between gap-2">
++          <span className="text-display text-xs tracking-wider text-text-tertiary">
++            小西语音交互 (Xiaoxi Voice)
++          </span>
++          <Badge tone={autoTts ? 'success' : 'secondary'} className="shrink-0">
++            {autoTts ? '自动播报开' : '自动播报关'}
++          </Badge>
++        </div>
++        <select
++          value={ttsVoice}
++          onChange={ev => {
++            const v = ev.target.value
++            setTtsVoice(v)
++            try { localStorage.setItem('xiaoxi_tts_voice', v) } catch {}
++            void speakWithXiaoxi('你好，我是交大小西，已切换语音声线。', v)
++          }}
++          className="w-full rounded border border-border bg-background px-2 py-1 text-xs text-midground"
++          title="选择小西播报声线（切换后自动试听）"
++        >
++          <option value="zh-CN-XiaoxiaoNeural">晓晓 · 温暖自然女声（推荐）</option>
++          <option value="zh-CN-shaanxi-XiaoniNeural">晓妮 · 西安/陕西话女声（交大特色）</option>
++          <option value="zh-TW-HsiaoChenNeural">晓臻 · 温柔台湾腔女声</option>
++          <option value="zh-TW-HsiaoYuNeural">晓雨 · 清脆台湾腔女声</option>
++          <option value="zh-CN-liaoning-XiaobeiNeural">晓北 · 幽默东北话女声</option>
++          <option value="zh-HK-HiuMaanNeural">晓曼 · 粤语女声</option>
++          <option value="zh-CN-YunxiNeural">云希 · 阳光青年男声</option>
++          <option value="browser-native">浏览器系统朗读（手动选择）</option>
++        </select>
++        <div className="flex flex-wrap gap-1.5">
++          <Button
++            size="sm"
++            outlined={!micListening}
++            onClick={toggleVoiceInput}
++            prefix={micListening ? <MicOff className="size-3.5" /> : <Mic className="size-3.5" />}
++            className="flex-1 text-xs"
++          >
++            {micListening ? '停止收音' : '语音提问'}
++          </Button>
++          <Button
++            size="sm"
++            outlined
++            onClick={() => {
++              const next = !autoTts
++              setAutoTts(next)
++              try { localStorage.setItem('xiaoxi_auto_tts', next ? '1' : '0') } catch {}
++              if (!next) stopSpeaking()
++            }}
++            prefix={autoTts ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
++            className="text-xs"
++            title="切换小西云端语音自动播报"
++          >
++            {autoTts ? '静音' : '开启播报'}
++          </Button>
++        </div>
++        {(lastReplyText || ttsSpeaking) && (
++          <Button
++            size="sm"
++            ghost
++            onClick={() => (ttsSpeaking ? stopSpeaking() : void speakWithXiaoxi(lastReplyText))}
++            className="w-full justify-start px-1 py-0.5 text-xs text-text-secondary hover:text-midground"
++          >
++            {ttsSpeaking ? '⏹ 停止朗读当前回答' : '🔊 重新朗读上一条小西回答'}
++          </Button>
++        )}
++        {playbackSource && (
++          <div className="wrap-break-word text-[11px] text-text-secondary">
++            {ttsSpeaking ? '当前播报' : '上次播报'}：{playbackSource}
++          </div>
++        )}
++        {voiceStatus && (
++          <div role="status" aria-live="polite" className="wrap-break-word text-[11px] text-text-secondary">
++            {voiceStatus}
++          </div>
++        )}
+       </Card>
+ 
+       {supportsReasoning && (
+--- a/web/src/pages/ChatPage.tsx
++++ b/web/src/pages/ChatPage.tsx
+@@ -512,6 +512,16 @@
+     return () => setEnd(null);
+   }, [isActive, narrow, mobilePanelOpen, modelToolsLabel, setEnd]);
+ 
++  const sendVoiceTextToPty = useCallback((text: string) => {
++    const clean = text.trim();
++    if (!clean) return;
++    const ws = wsRef.current;
++    if (ws && ws.readyState === WebSocket.OPEN) {
++      ws.send(clean + "\r");
++      termRef.current?.focus();
++    }
++  }, []);
++
+   const handleCopyLast = () => {
+     const ws = wsRef.current;
+     if (!ws || ws.readyState !== WebSocket.OPEN) return;
+@@ -1861,6 +1871,7 @@
+                 profile={scopedProfile}
+                 onDashboardNewSessionRequest={startFreshDashboardChat}
+                 onSessionTitleChange={handleSessionTitleChange}
++                onSendVoiceText={sendVoiceTextToPty}
+               />
+             </div>
+             <ChatSessionList
+@@ -2068,6 +2079,7 @@
+                 profile={scopedProfile}
+                 onDashboardNewSessionRequest={startFreshDashboardChat}
+                 onSessionTitleChange={handleSessionTitleChange}
++                onSendVoiceText={sendVoiceTextToPty}
+               />
+             </div>
+ 
