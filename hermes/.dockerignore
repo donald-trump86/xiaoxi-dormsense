@@ -1,0 +1,16 @@
+# Deny by default: no private state, user configuration, model cache, test fixtures,
+# generated output, or unrelated repository content can enter the build context.
+**
+!Dockerfile
+!.dockerignore
+!apply_patch.py
+!check_voice_dependencies.py
+!requirements-voice.txt
+!requirements-voice.lock
+!patches/
+patches/**
+!patches/hermes.patch
+!patches/manifest.json
+!workspace/
+workspace/**
+!workspace/AGENTS.md
