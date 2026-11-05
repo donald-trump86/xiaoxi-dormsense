@@ -14,3 +14,12 @@ patches/**
 !workspace/
 workspace/**
 !workspace/AGENTS.md
+!skins/
+skins/**
+!skins/xiaoxi.yaml
+!branding/
+branding/**
+!branding/xiaoxi-logo.png
+!branding/xiaoxi-login.png
+!branding/apple-touch-icon.png
+!branding/favicon.ico

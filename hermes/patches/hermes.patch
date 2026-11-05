@@ -660,7 +660,253 @@
        {supportsReasoning && (
 --- a/web/src/pages/ChatPage.tsx
 +++ b/web/src/pages/ChatPage.tsx
-@@ -512,6 +512,16 @@
+@@ -34,7 +34,10 @@
+ import { ChatSessionList } from "@/components/ChatSessionList";
+ import { usePageHeader } from "@/contexts/usePageHeader";
+ import { useI18n } from "@/i18n";
+-import { api } from "@/lib/api";
++import { api, HERMES_BASE_PATH } from "@/lib/api";
++import { EventsFeedClient } from "@/lib/eventsFeedClient";
++import { EVENTS_MAX_RECONNECT_ATTEMPTS, eventsReconnectDelayMs, shouldRetryEventsClose } from "@/lib/events-reconnect";
++import { dashboardServingProfile } from "@/lib/profile-bootstrap";
+ import { latchChatActivation } from "@/lib/chat-activation";
+ import { copyTextToClipboard } from "@/lib/clipboard";
+ import { normalizeSessionTitle } from "@/lib/chat-title";
+@@ -97,16 +100,83 @@
+ import { PluginSlot } from "@/plugins";
+ import { useTheme } from "@/themes";
+ import { useProfileScope } from "@/contexts/useProfileScope";
+-import { errorMessage } from "@/lib/api-error";
++import { ApiError, errorMessage } from "@/lib/api-error";
++
++type DashboardChatSelection = {
++  scope: string;
++  requested: string | null;
++  id: string | null;
++  attach: string;
++  channel: string;
++  fresh: boolean;
++  freshNonce: number;
++};
++
++function durableChatId(value: unknown): string | null {
++  if (typeof value !== "string") return null;
++  const id = value.trim();
++  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(id) ? id : null;
++}
++
++function readRememberedChat(key: string): string | null {
++  try {
++    return durableChatId(localStorage.getItem(key));
++  } catch {
++    return null;
++  }
++}
++
++function rememberChat(key: string, id: string | null): void {
++  try {
++    if (id) localStorage.setItem(key, id);
++    else localStorage.removeItem(key);
++  } catch {
++    // Storage may be denied or full; the live conversation still works.
++  }
++}
++
++function channelForChat(scope: string, attach: string, resume: string | null): string {
++  // Keep the publisher/subscriber channel when a living PTY is reattached
++  // after reload. ptyAttachToken's Web Lock gives duplicated tabs a new token.
++  const key = JSON.stringify(["hermes.chat.channel.v1", scope, attach, resume]);
++  try {
++    const stored = sessionStorage.getItem(key);
++    if (stored && /^[A-Za-z0-9._-]{1,128}$/.test(stored)) return stored;
++    const channel = generateChannelId(scope);
++    sessionStorage.setItem(key, channel);
++    return channel;
++  } catch {
++    return generateChannelId(scope);
++  }
++}
++
++async function resolveDashboardChat(id: string, profile: string): Promise<string | null> {
++  let timer: ReturnType<typeof setTimeout> | undefined;
++  try {
++    const result = await Promise.race([
++      api.getSessionLatestDescendant(id, profile),
++      new Promise<never>((_, reject) => {
++        timer = setTimeout(() => reject(new Error("chat selection timed out")), 8_000);
++      }),
++    ]);
++    return durableChatId(result.session_id);
++  } catch (error) {
++    if (error instanceof ApiError && [400, 404, 422].includes(error.status)) return null;
++    // Temporary service failures do not invalidate a remembered human choice.
++    // The normal PTY reconnect policy handles the unavailable backend.
++    return id;
++  } finally {
++    if (timer !== undefined) clearTimeout(timer);
++  }
++}
+ 
+ // Per-tab keep-alive identity (`?attach=`): lives in pty-attach-token.ts so a
+ // second tab — including a Chrome "Duplicate tab" — gets its own PTY instead of
+ // taking over this one. See #115304.
+ 
+ // Channel id ties this chat tab's PTY child (publisher) to its sidebar
+-// (subscriber).  Generated once per mount so a tab refresh starts a fresh
+-// channel — the previous PTY child terminates with the old WS, and its
+-// channel auto-evicts when no subscribers remain.
++// and current-session observer. channelForChat retains it for the matching
++// native attach token/profile/resume target across a living PTY reattach.
+ function generateChannelId(scope?: string): string {
+   const prefix = scope ? "chat" : "chat-fresh";
+   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+@@ -203,6 +273,22 @@
+     setHasActivated((prev) => latchChatActivation(prev, isActive));
+   }, [isActive]);
+   const [searchParams, setSearchParams] = useSearchParams();
++  const searchParamsWriterRef = useRef(setSearchParams);
++  useEffect(() => { searchParamsWriterRef.current = setSearchParams; }, [setSearchParams]);
++  const { profile: scopedProfile } = useProfileScope();
++  const requestedResume = searchParams.get("resume")?.trim() || null;
++  const freshUrlRequested = searchParams.get("fresh") === "1";
++  const freshRequested = freshUrlRequested && !requestedResume;
++  const chatStorageKey = JSON.stringify([
++    "hermes.chat.last-session.v1",
++    HERMES_BASE_PATH,
++    scopedProfile || dashboardServingProfile() || "@serving",
++  ]);
++  const [chatSelection, setChatSelection] = useState<DashboardChatSelection | null>(null);
++  const selectedChatRef = useRef<DashboardChatSelection | null>(null);
++  const [freshRequestNonce, setFreshRequestNonce] = useState(0);
++  const handledFreshNonceRef = useRef(0);
++  const handledFreshScopeRef = useRef<string | null>(null);
+   // Lazy-init: the missing-token check happens at construction so the effect
+   // body doesn't have to setState (React 19's set-state-in-effect rule).
+   // In gated (OAuth) mode the server intentionally omits the session token —
+@@ -281,23 +367,13 @@
+     setPtyState("connecting");
+     setReconnectNonce((n) => n + 1);
+   }, [clearReconnectTimer]);
+-  const startFreshPty = useCallback(() => {
+-    forceFreshPtyRef.current = true;
+-    reconnectAttemptRef.current = 0;
+-    clearReconnectTimer();
+-    blockedInputNoticeRef.current = false;
+-    ptyInputLineRef.current = "";
+-    mobileReplacementInputUntilRef.current = 0;
+-    setBanner(null);
+-    setBannerAction(null);
+-    setReconnectGaveUp(false);
+-    setPtyState("connecting");
+-    setReconnectNonce((n) => n + 1);
+-  }, [clearReconnectTimer]);
+   const startFreshDashboardChat = useCallback(() => {
+     const next = new URLSearchParams(searchParams);
+ 
+     next.delete("resume");
++    next.set("fresh", "1");
++    rememberChat(chatStorageKey, null);
++    setFreshRequestNonce((n) => n + 1);
+     forceFreshPtyRef.current = true;
+     reconnectAttemptRef.current = 0;
+     clearReconnectTimer();
+@@ -310,7 +386,8 @@
+     setReconnectGaveUp(false);
+     setPtyState("connecting");
+     setReconnectNonce((n) => n + 1);
+-  }, [clearReconnectTimer, searchParams, setSearchParams]);
++  }, [chatStorageKey, clearReconnectTimer, searchParams, setSearchParams]);
++  const startFreshPty = startFreshDashboardChat;
+   // Clear mobile-input tracking refs when the tab is hidden so stale state
+   // from a previous /chat visit doesn't cause the mobile-replacement logic
+   // to misfire on the next activation (#106403: repeated last character).
+@@ -378,15 +455,76 @@
+   // Sessions page relies on `/chat?resume=<id>` changing at runtime, so we must
+   // treat the current resume target as part of the PTY identity and rebuild the
+   // terminal session when it changes.
+-  const resumeParam = searchParams.get("resume");
+-  // Profile-scoped chat: spawn the PTY under the globally selected
+-  // management profile. Changing it remounts the terminal (key below /
+-  // effect dep) so the user explicitly starts a fresh scoped session.
+-  const { profile: scopedProfile } = useProfileScope();
+-  const channel = useMemo(
+-    () => generateChannelId(`${resumeParam ?? ""}\0${scopedProfile}`),
+-    [resumeParam, scopedProfile],
+-  );
++  useEffect(() => {
++    if (!isActive) return;
++    if (!freshRequested) handledFreshScopeRef.current = null;
++    if (requestedResume && freshUrlRequested) {
++      searchParamsWriterRef.current((previous) => {
++        if (previous.get("resume") !== requestedResume || previous.get("fresh") !== "1") return previous;
++        const next = new URLSearchParams(previous);
++        next.delete("fresh");
++        return next;
++      }, { replace: true });
++    }
++    const forceFresh = !requestedResume && (
++      freshRequestNonce !== handledFreshNonceRef.current ||
++      (freshRequested && handledFreshScopeRef.current !== chatStorageKey));
++    const current = selectedChatRef.current;
++    if (!forceFresh && current?.scope === chatStorageKey &&
++        (!requestedResume || requestedResume === current.requested || requestedResume === current.id)) {
++      return;
++    }
++
++    let cancelled = false;
++    if (forceFresh) {
++      rememberChat(chatStorageKey, null);
++      forceFreshPtyRef.current = true;
++    }
++    selectedChatRef.current = null;
++    setChatSelection(null);
++    void (async () => {
++      const candidate = forceFresh ? null : durableChatId(requestedResume) ||
++        (!requestedResume ? readRememberedChat(chatStorageKey) : null);
++      const id = candidate ? await resolveDashboardChat(candidate, scopedProfile) : null;
++      if (cancelled) return;
++      if (candidate && !id && readRememberedChat(chatStorageKey) === candidate) {
++        rememberChat(chatStorageKey, null);
++      }
++      // Claim/rotate before choosing the channel so reload can reuse the
++      // living publisher and duplicated tabs retain independent channels.
++      let attach: string;
++      try {
++        attach = await ptyAttachToken(forceFresh);
++      } catch {
++        // The native helper's initial sessionStorage read may itself throw.
++        attach = crypto.randomUUID().replace(/-/g, "");
++      }
++      if (cancelled) return;
++      handledFreshNonceRef.current = freshRequestNonce;
++      if (forceFresh) handledFreshScopeRef.current = chatStorageKey;
++      const selection: DashboardChatSelection = {
++        scope: chatStorageKey,
++        requested: requestedResume,
++        id,
++        attach,
++        channel: channelForChat(chatStorageKey, attach, id),
++        fresh: forceFresh,
++        freshNonce: freshRequestNonce,
++      };
++      selectedChatRef.current = selection;
++      setChatSelection(selection);
++    })();
++    return () => { cancelled = true; };
++  }, [isActive, chatStorageKey, scopedProfile, requestedResume, freshUrlRequested, freshRequested, freshRequestNonce]);
++
++  const chatSelectionReady = chatSelection?.scope === chatStorageKey &&
++    chatSelection.freshNonce === freshRequestNonce &&
++    (!freshRequested || chatSelection.fresh) &&
++    (!requestedResume || freshRequested || chatSelection.requested === requestedResume || chatSelection.id === requestedResume);
++  // Persisting an observed ID never changes the live PTY identity. The next
++  // cold start reads it; route switches keep the already selected live chat.
++  const resumeParam = chatSelectionReady ? chatSelection.id : null;
++  const channel = chatSelectionReady ? chatSelection.channel : "";
+   const titleScope = `${channel}\0${reconnectNonce}`;
+   const sessionTitle =
+     sessionTitleState.scope === titleScope ? sessionTitleState.title : null;
+@@ -512,6 +650,16 @@
      return () => setEnd(null);
    }, [isActive, narrow, mobilePanelOpen, modelToolsLabel, setEnd]);
  
@@ -677,7 +923,126 @@
    const handleCopyLast = () => {
      const ws = wsRef.current;
      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-@@ -1861,6 +1871,7 @@
+@@ -536,7 +684,7 @@
+     // until the chat tab has been activated. Prevents the persistently
+     // mounted, hidden ChatPage from opening `/api/pty` on every dashboard
+     // page. Sticky, so switching away from /chat keeps the PTY alive.
+-    if (!hasActivated) return;
++    if (!hasActivated || !chatSelectionReady || !chatSelection) return;
+ 
+     const host = hostRef.current;
+     if (!host) return;
+@@ -1097,6 +1245,68 @@
+     // ``return cleanup`` stays at the top level; handlers + disposables
+     // are hoisted to ``let`` bindings the cleanup closes over.
+     let unmounting = false;
++    const events = new EventsFeedClient();
++    let eventsRetryTimer: ReturnType<typeof setTimeout> | null = null;
++    let eventsAttempts = 0;
++    let eventsRetryAllowed = true;
++    let announcedStoredId: string | null = resumeParam;
++    let observationVersion = 0;
++    const rememberAnnouncedChat = async () => {
++      const id = announcedStoredId;
++      if (!id || unmounting) return;
++      const version = ++observationVersion;
++      try {
++        // session.info can precede the first database row of an empty draft.
++        // Keep its announced ID and retry after message.complete below.
++        const result = await api.getSessionLatestDescendant(id, scopedProfile);
++        const storedId = durableChatId(result.session_id);
++        if (unmounting || version !== observationVersion || announcedStoredId !== id || !storedId) return;
++        rememberChat(chatStorageKey, storedId);
++        if (isActiveRef.current) {
++          searchParamsWriterRef.current((previous) => {
++            if (previous.get("fresh") !== "1") return previous;
++            const next = new URLSearchParams(previous);
++            next.delete("fresh");
++            return next;
++          }, { replace: true });
++        }
++      } catch {
++        // Deleted IDs and not-yet-persisted drafts are never remembered.
++      }
++    };
++    const stopInfo = events.on("session.info", (event) => {
++      const payload = event.payload as Record<string, unknown> | undefined;
++      const id = durableChatId(payload?.stored_session_id);
++      if (unmounting || !id) return;
++      announcedStoredId = id;
++      void rememberAnnouncedChat();
++    });
++    const stopComplete = events.on("message.complete", () => { void rememberAnnouncedChat(); });
++    const queueEventsReconnect = () => {
++      if (unmounting || eventsRetryTimer || eventsAttempts >= EVENTS_MAX_RECONNECT_ATTEMPTS) return;
++      const delay = eventsReconnectDelayMs(eventsAttempts++);
++      eventsRetryTimer = setTimeout(() => {
++        eventsRetryTimer = null;
++        void connectEvents();
++      }, delay);
++    };
++    const connectEvents = async () => {
++      eventsRetryAllowed = true;
++      try {
++        await events.connect(channel);
++        if (unmounting) { events.close(); return; }
++        eventsAttempts = 0;
++      } catch {
++        if (eventsRetryAllowed) queueEventsReconnect();
++      }
++    };
++    const stopEventsClose = events.onClose((code) => {
++      eventsRetryAllowed = shouldRetryEventsClose(code);
++      if (eventsRetryAllowed) queueEventsReconnect();
++    });
++    // The feed is live-only. Subscribe before spawning the PTY so its first
++    // actual stored_session_id cannot race ahead of our listener.
++    const eventsReady = connectEvents();
+     // The implicit active-session fallback (no `?resume=` on the URL) only
+     // becomes known once the server's control frame arrives (see
+     // `ws.onmessage` below) — everything gated on "is this a resume replay"
+@@ -1224,14 +1434,15 @@
+       scheduleReconnect(null);
+     };
+     void (async () => {
++      await eventsReady;
+       if (unmounting) return;
+       const params: Record<string, string> = { channel };
+       if (resumeParam) params.resume = resumeParam;
+       if (forceFresh) params.fresh = "1";
+       // Keep-alive identity: reattach to this tab's living PTY across
+-      // refresh/transient drops. A forced-fresh start rotates the token so
+-      // the previous keep-alive PTY is not reattached (registry reaps it).
+-      params.attach = await ptyAttachToken(forceFresh);
++      // refresh/transient drops. Selection already claimed/rotated the token
++      // before choosing its matching publisher/subscriber channel.
++      params.attach = chatSelection.attach;
+       // Profile-scoped chat: the PTY child gets HERMES_HOME pointed at the
+       // selected profile, so the conversation runs with that profile's model,
+       // skills, memory, and sessions (see web_server._resolve_chat_argv).
+@@ -1556,6 +1767,11 @@
+ 
+     return () => {
+       unmounting = true;
++      stopInfo();
++      stopComplete();
++      stopEventsClose();
++      if (eventsRetryTimer) clearTimeout(eventsRetryTimer);
++      events.close();
+       imageUploadDisposed = true;
+       syncMetricsRef.current = null;
+       clearEraseSuppressionTimer();
+@@ -1613,6 +1829,9 @@
+     };
+   }, [
+     hasActivated,
++    chatSelectionReady,
++    chatSelection,
++    chatStorageKey,
+     channel,
+     clearReconnectTimer,
+     resumeParam,
+@@ -1861,6 +2080,7 @@
                  profile={scopedProfile}
                  onDashboardNewSessionRequest={startFreshDashboardChat}
                  onSessionTitleChange={handleSessionTitleChange}
@@ -685,7 +1050,7 @@
                />
              </div>
              <ChatSessionList
-@@ -2068,6 +2079,7 @@
+@@ -2068,6 +2288,7 @@
                  profile={scopedProfile}
                  onDashboardNewSessionRequest={startFreshDashboardChat}
                  onSessionTitleChange={handleSessionTitleChange}
@@ -693,3 +1058,610 @@
                />
              </div>
  
+--- a/hermes_cli/banner.py
++++ b/hermes_cli/banner.py
+@@ -485,7 +485,8 @@
+ 
+ def format_banner_version_label() -> str:
+     """Return the version label shown in the startup banner title."""
+-    base = f"Hermes Agent v{VERSION} ({RELEASE_DATE})"
++    agent_name = _quiet(lambda: _active_skin().get_branding("agent_name", "xiaoxi"), "xiaoxi")
++    base = f"{agent_name} v{VERSION} ({RELEASE_DATE})"
+     state = get_git_banner_state()
+     if not state:
+         return base
+@@ -869,7 +870,6 @@
+     lines = []
+     pin = " (pinned)" if context_pinned else ""
+     ctx_str = _dim_sep(f"{_format_context_length(context_length)} context{pin}") if context_length else ""
+-    nous_str = _dim_sep("Nous Research")
+     if not (model or "").strip():
+         # Credentials resolve lazily on the first message; the banner prints first. Ask the route
+         # the same question so a fresh free-tier install shows its model, not a red "unconfigured".
+@@ -878,13 +878,13 @@
+         # MoA virtual provider: ``model`` is a preset name; show it with its aggregator.
+         agg_label = _quiet(lambda: _moa_aggregator_label(model), "")
+         agg_str = _dim_sep(f"agg {agg_label}") if agg_label else ""
+-        lines.append(f"[{accent}]MoA: {_short_label(model)}[/]{agg_str}{ctx_str}{nous_str}")
++        lines.append(f"[{accent}]MoA: {_short_label(model)}[/]{agg_str}{ctx_str}")
+     elif not (model or "").strip() or (model or "").strip().lower() == "unknown":
+         # Unconfigured install: the clearest place to say what is wrong and how to fix it.
+         lines.append(f"[bold red]no model configured[/] [dim {dim}]— run /model or hermes setup[/]")
+     else:
+         model_short = model.split("/")[-1].removesuffix(".gguf")
+-        lines.append(f"[{accent}]{_short_label(model_short)}[/]{ctx_str}{nous_str}")
++        lines.append(f"[{accent}]{_short_label(model_short)}[/]{ctx_str}")
+     if os.getenv("HERMES_YOLO_MODE"):
+         lines.append(f"[bold red]⚠ YOLO mode[/] [dim {dim}]— all approval prompts bypassed[/]")
+     lines.append(f"[dim {dim}]{cwd}[/]")
+@@ -965,7 +965,7 @@
+     text = _skin_color("banner_text", "#FFF8DC")
+     # Use skin's custom caduceus art if provided
+     _bskin = _quiet(_active_skin)
+-    left_lines = ["", getattr(_bskin, "banner_hero", None) or HERMES_CADUCEUS, ""]
++    left_lines = ["", getattr(_bskin, "banner_hero", None) or "", ""]
+     left_lines += _banner_left_lines(model, cwd, session_id, context_length, provider, accent=accent, dim=dim,
+                                      context_pinned=context_pinned)
+     right_lines = _banner_tool_lines(
+@@ -1027,6 +1027,6 @@
+         border_style=_skin_color("banner_border", "#CD7F32"), padding=(0, 2))
+     console.print()
+     if shutil.get_terminal_size().columns >= 95:
+-        console.print(getattr(_bskin, "banner_logo", None) or HERMES_AGENT_LOGO)
++        console.print(getattr(_bskin, "banner_logo", None) or "xiaoxi")
+         console.print()
+     console.print(outer_panel)
+--- a/hermes_cli/cli_render.py
++++ b/hermes_cli/cli_render.py
+@@ -645,23 +645,20 @@
+     title_color = _color("banner_title", "#FFBF00")
+     dim_color = _color("banner_dim", "#B8860B")
+ 
+-    if (getattr(_skin, "name", "default") if _skin else "default") == "default":
+-        tiny_line = "☤ NOUS HERMES"
+-    else:
+-        tiny_line = _skin.get_branding("agent_name", "Hermes Agent") if _skin else "Hermes Agent"
+-    line1 = f"{tiny_line} - AI Agent Framework"
++    tiny_line = _skin.get_branding("agent_name", "xiaoxi") if _skin else "xiaoxi"
++    line1 = tiny_line
+ 
+     if os.environ.get("HERMES_FAST_STARTUP_BANNER") == "1":
+         from hermes_cli import __release_date__ as _release_date
+         from hermes_cli import __version__ as _version
+ 
+-        version_line = f"Hermes Agent v{_version} ({_release_date})"
++        version_line = f"{tiny_line} v{_version} ({_release_date})"
+     else:
+         version_line = format_banner_version_label()
+ 
+     w = min(shutil.get_terminal_size().columns - 2, 88)
+     if w < 30:
+-        return f"\n[{title_color}]{tiny_line}[/] [dim {dim_color}]- Nous Research[/]\n"
++        return f"\n[{title_color}]{tiny_line}[/]\n"
+ 
+     inner = w - 2  # inside the box border
+     bar = "═" * w
+--- a/hermes_cli/dashboard_auth/login_page.py
++++ b/hermes_cli/dashboard_auth/login_page.py
+@@ -11,7 +11,9 @@
+ """
+ from __future__ import annotations
+ 
++import base64
+ import html
++from pathlib import Path
+ from urllib.parse import quote, urlencode
+ 
+ from hermes_cli.dashboard_auth import list_session_providers
+@@ -23,7 +25,7 @@
+ <head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+-<title>Sign in — Hermes Agent</title>
++<title>Sign in — xiaoxi</title>
+ <style>
+   /* Brand fonts shipped by @nous-research/ui — same files the SPA loads. */
+   @font-face {{
+@@ -118,26 +120,25 @@
+     main {{ animation: none; }}
+   }}
+ 
+-  /* Brand wordmark above the card — same uppercase + wide-tracking
+-     idiom DS Buttons use. */
+   .brand {{
++    display: flex;
++    flex-direction: column;
++    align-items: center;
++    gap: 0.5rem;
+     text-align: center;
+     margin-bottom: 1.75rem;
+     font-family: 'Rules Compressed', 'Collapse', sans-serif;
+     font-weight: 600;
+     font-size: 1.05rem;
+-    letter-spacing: 0.32em;
+-    text-transform: uppercase;
++    letter-spacing: 0.12em;
+     color: var(--midground);
+   }}
+-  .brand .dot {{
+-    display: inline-block;
+-    width: 6px;
+-    height: 6px;
+-    background: var(--midground);
+-    margin: 0 0.55em 0.18em;
+-    vertical-align: middle;
+-    border-radius: 1px;
++  .brand-logo {{
++    width: 88px;
++    height: 88px;
++    max-width: 100%;
++    max-height: 88px;
++    object-fit: contain;
+   }}
+ 
+   .card {{
+@@ -287,10 +288,13 @@
+ </head>
+ <body>
+ <main>
+-  <div class="brand">Nous<span class="dot"></span>Research</div>
++  <div class="brand">
++    <img class="brand-logo" src="__XIAOXI_LOGO_DATA_URL__" alt="xiaoxi">
++    <span>xiaoxi</span>
++  </div>
+   <div class="card">
+     <h1>Sign in</h1>
+-    <p class="subtitle">Choose a sign-in method to continue to the Hermes Agent dashboard.</p>
++    <p class="subtitle">Choose a sign-in method to continue to the xiaoxi dashboard.</p>
+     <div class="provider-list">
+ {provider_buttons}
+     </div>
+@@ -310,7 +314,7 @@
+ <head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+-<title>Sign-in unavailable — Hermes Agent</title>
++<title>Sign-in unavailable — xiaoxi</title>
+ <style>
+   @font-face {
+     font-family: 'Collapse';
+@@ -371,10 +375,31 @@
+     font-size: 0.9em;
+   }
+   a { color: var(--midground); }
++  .brand {
++    display: flex;
++    flex-direction: column;
++    align-items: center;
++    gap: 0.5rem;
++    margin-bottom: 1.75rem;
++    font-weight: 600;
++    letter-spacing: 0.12em;
++    color: var(--midground);
++  }
++  .brand-logo {
++    width: 88px;
++    height: 88px;
++    max-width: 100%;
++    max-height: 88px;
++    object-fit: contain;
++  }
+ </style>
+ </head>
+ <body>
+ <main>
++<div class="brand">
++  <img class="brand-logo" src="__XIAOXI_LOGO_DATA_URL__" alt="xiaoxi">
++  <span>xiaoxi</span>
++</div>
+ <h1>Sign-in unavailable</h1>
+ <p>This dashboard is bound to a non-loopback host but no authentication
+ providers are available.</p>
+@@ -388,6 +413,17 @@
+ </html>
+ """
+ 
++
++# Read only the bundled public logo. Authentication remains available if an
++# optional branding asset is missing from an older or partial installation.
++try:
++    _logo_bytes = (Path(__file__).resolve().parents[1] / "web_dist/ds-assets/xiaoxi-login.png").read_bytes()
++    _logo_data_url = "data:image/png;base64," + base64.b64encode(_logo_bytes).decode("ascii")
++except OSError:
++    _logo_svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="192" height="64"><text x="4" y="45" font-size="40">xiaoxi</text></svg>'
++    _logo_data_url = "data:image/svg+xml;base64," + base64.b64encode(_logo_svg).decode("ascii")
++_LOGIN_HTML_TEMPLATE = _LOGIN_HTML_TEMPLATE.replace("__XIAOXI_LOGO_DATA_URL__", _logo_data_url)
++_EMPTY_HTML = _EMPTY_HTML.replace("__XIAOXI_LOGO_DATA_URL__", _logo_data_url)
+ 
+ # Emitted ONLY when a ``supports_password`` provider is listed, so OAuth-only
+ # login pages stay script-free. Plain string (not ``str.format``): braces are
+--- a/ui-tui/src/components/branding.tsx
++++ b/ui-tui/src/components/branding.tsx
+@@ -3,7 +3,7 @@
+ import { useEffect, useState } from 'react'
+ import unicodeSpinners from 'unicode-animations'
+ 
+-import { artWidth, caduceus, CADUCEUS_WIDTH, logo, LOGO_WIDTH } from '../banner.js'
++import { artWidth, caduceus, CADUCEUS_WIDTH } from '../banner.js'
+ import { flat } from '../lib/text.js'
+ import type { Theme } from '../theme.js'
+ import type { PanelSection, SessionInfo } from '../types.js'
+@@ -49,143 +49,15 @@
+   )
+ }
+ 
+-// Responsive Banner: full art → compact rule → text → hidden.
+-//
+-// Terminals can't scale glyphs, so "responsive" means picking a layout that
+-// fits the available columns. Thresholds are picked so each tier reads
+-// comfortably without forcing wrap or truncation drift on box-drawing edges.
+-const TAG_FULL = 'Nous Research · Messenger of the Digital Gods'
+-const TAG_MID = 'Messenger of the Digital Gods'
+-const TAG_TINY = 'Nous Research'
+-const HIDE_BELOW = 34
+-const COMPACT_FROM = 58
+-
+-const clip = (s: string, w: number) => (w <= 0 ? '' : s.length > w ? `${s.slice(0, Math.max(0, w - 1))}…` : s)
+-
+-const centerIn = (s: string, w: number) => {
+-  const f = clip(s, w)
+-  const slack = Math.max(0, w - f.length)
+-  const left = slack >> 1
+-
+-  return `${' '.repeat(left)}${f}${' '.repeat(slack - left)}`
+-}
+-
+-const ruleIn = (label: string, w: number) => {
+-  const f = clip(label, Math.max(1, w - 4))
+-  const slack = Math.max(0, w - f.length - 2)
+-  const left = slack >> 1
+-
+-  return `${'─'.repeat(left)} ${f} ${'─'.repeat(slack - left)}`
+-}
+-
+-function CompactBanner({ cols, t }: { cols: number; t: Theme }) {
+-  // -4 keeps a margin so exact-edge rows don't trip terminal pending-wrap.
+-  const w = Math.max(28, cols - 4)
+-
+-  // No `opaque` (see ArtLines): the dashed rules are glyphs and the tagline's
+-  // centering spaces carry the text's own fg style, so every cell paints with
+-  // a real see-through background. The opaque fill was writing default-bg
+-  // spaces that a transparent terminal renders as black bars.
+-  // NOT bold: on Cursor's transparent-background terminal, a full-width run
+-  // of BOLD box-drawing dashes renders with an opaque black cell background
+-  // (the plain-dash rule right below renders clean — pixel-diffed live; the
+-  // only stylistic delta was bold). Bold on short label runs is fine; bold on
+-  // full-width box-drawing rows is what triggers the slab.
+-  return (
+-    <Box flexDirection="column" height={3} marginBottom={1} width={w}>
+-      <Text color={t.color.primary}>{ruleIn(t.brand.name, w)}</Text>
+-      <Text color={t.color.muted}>{centerIn(TAG_FULL, w)}</Text>
+-      <Text color={t.color.primary}>{'─'.repeat(w)}</Text>
+-    </Box>
+-  )
+-}
+-
+ export function Banner({ maxWidth, t }: { maxWidth?: number; t: Theme }) {
+   const term = useStdout().stdout?.columns ?? 80
+   const cols = Math.max(1, Math.min(term, maxWidth ?? term))
+ 
+-  if (cols < HIDE_BELOW) {
+-    return null
+-  }
+-
+-  const logoLines = logo(t.color, t.bannerLogo || undefined)
+-  const logoW = t.bannerLogo ? artWidth(logoLines) : LOGO_WIDTH
+-
+-  // Each tier renders its rows through a single-column WidgetGrid sized to
+-  // the available columns — same visual output as the old plain flex column
+-  // (cells clip where truncate-end used to), but the banner is now a
+-  // layout-engine surface.
+-  if (cols >= logoW + 2) {
+-    return (
+-      <Box flexDirection="column" marginBottom={1}>
+-        <WidgetGrid
+-          cols={cols}
+-          columns={1}
+-          gap={0}
+-          paddingX={0}
+-          paddingY={0}
+-          rowGap={0}
+-          widgets={[
+-            { children: <ArtLines lines={logoLines} />, id: 'banner-art' },
+-            {
+-              children: (
+-                <Text color={t.color.muted} wrap="truncate-end">
+-                  {t.brand.icon} {TAG_FULL}
+-                </Text>
+-              ),
+-              id: 'banner-tagline'
+-            }
+-          ]}
+-        />
+-      </Box>
+-    )
+-  }
+-
+-  if (cols >= COMPACT_FROM) {
+-    return (
+-      <WidgetGrid
+-        cols={cols}
+-        columns={1}
+-        gap={0}
+-        paddingX={0}
+-        paddingY={0}
+-        rowGap={0}
+-        widgets={[{ children: <CompactBanner cols={cols} t={t} />, id: 'banner-compact' }]}
+-      />
+-    )
+-  }
+-
+-  const name = cols >= 52 ? t.brand.name : (t.brand.name.split(' ')[0] ?? t.brand.name)
+-  const tag = cols >= 64 ? TAG_FULL : cols >= 46 ? TAG_MID : TAG_TINY
+-
+   return (
+-    <Box flexDirection="column" marginBottom={1}>
+-      <WidgetGrid
+-        cols={cols}
+-        columns={1}
+-        gap={0}
+-        paddingX={0}
+-        paddingY={0}
+-        rowGap={0}
+-        widgets={[
+-          {
+-            children: (
+-              <Text bold color={t.color.primary} wrap="truncate-end">
+-                {t.brand.icon} {name}
+-              </Text>
+-            ),
+-            id: 'banner-name'
+-          },
+-          {
+-            children: (
+-              <Text color={t.color.muted} wrap="truncate-end">
+-                {t.brand.icon} {tag}
+-              </Text>
+-            ),
+-            id: 'banner-tag'
+-          }
+-        ]}
+-      />
++    <Box marginBottom={1} width={cols}>
++      <Text bold color={t.color.primary} wrap="truncate-end">
++        {t.brand.name}
++      </Text>
+     </Box>
+   )
+ }
+@@ -214,7 +86,7 @@
+   const cols = Math.max(20, Math.min(term, maxWidth ?? term))
+   const heroLines = caduceus(t.color, t.bannerHero || undefined)
+   const leftW = Math.min((artWidth(heroLines) || CADUCEUS_WIDTH) + 4, Math.floor(cols * 0.4))
+-  const wide = cols >= 90 && leftW + 40 < cols
++  const wide = !!t.bannerHero.trim() && cols >= 90 && leftW + 40 < cols
+   const w = Math.max(20, wide ? cols - leftW - 14 : cols - 12)
+   const lineBudget = Math.max(12, w - 2)
+   const strip = (s: string) => (s.endsWith('_tools') ? s.slice(0, -6) : s)
+@@ -362,7 +234,6 @@
+ 
+       <Text color={t.color.accent}>
+         {(info.model ?? '').split('/').pop()}
+-        <Text color={t.color.muted}> · Nous Research</Text>
+       </Text>
+ 
+       <Text color={t.color.muted} wrap="truncate-end">
+@@ -380,21 +251,19 @@
+ 
+   const infoColumn = (
+     <Box flexDirection="column" width="100%">
+-      {wide ? (
+-        <Box justifyContent="center" marginBottom={1}>
+-          <Text bold color={t.color.primary}>
+-            {t.brand.name}
+-            {info.version ? ` v${info.version}` : ''}
+-            {info.release_date ? ` (${info.release_date})` : ''}
+-          </Text>
+-        </Box>
+-      ) : (
++      <Box justifyContent="center" marginBottom={1}>
++        <Text bold color={t.color.primary}>
++          {t.brand.name}
++          {info.version ? ` v${info.version}` : ''}
++          {info.release_date ? ` (${info.release_date})` : ''}
++        </Text>
++      </Box>
++      {!wide && (
+         // Narrow layout hides the hero column; surface model/cwd/session
+         // here so they aren't lost.
+         <Box flexDirection="column" marginBottom={1}>
+           <Text color={t.color.accent} wrap="truncate-end">
+             {(info.model ?? '').split('/').pop()}
+-            <Text color={t.color.muted}> · Nous Research</Text>
+           </Text>
+           <Text color={t.color.muted} wrap="truncate-end">
+             {info.cwd || process.cwd()}
+--- a/ui-tui/src/theme.ts
++++ b/ui-tui/src/theme.ts
+@@ -252,11 +252,11 @@
+ // ── Defaults ─────────────────────────────────────────────────────────
+ 
+ const BRAND: ThemeBrand = {
+-  name: 'Hermes Agent',
+-  icon: '☤',
++  name: 'xiaoxi',
++  icon: '',
+   prompt: '❯',
+   welcome: 'Type your message or /help for commands.',
+-  goodbye: 'Goodbye! ☤',
++  goodbye: 'Goodbye!',
+   tool: '┊',
+   helpHeader: '(^_^)? Commands'
+ }
+@@ -420,15 +420,15 @@
+ export const DARK_THEME: Theme = {
+   color: buildPalette(DARK_SEEDS, false),
+   brand: BRAND,
+-  bannerLogo: '',
+-  bannerHero: ''
++  bannerLogo: 'xiaoxi',
++  bannerHero: ' '
+ }
+ 
+ export const LIGHT_THEME: Theme = {
+   color: buildPalette(LIGHT_SEEDS, true),
+   brand: BRAND,
+-  bannerLogo: '',
+-  bannerHero: ''
++  bannerLogo: 'xiaoxi',
++  bannerHero: ' '
+ }
+ 
+ // ── Background-aware readability adaptation ─────────────────────────
+--- a/ui-tui/src/app/useMainApp.ts
++++ b/ui-tui/src/app/useMainApp.ts
+@@ -688,7 +688,7 @@
+           tab: composeTabTitle(marker, ui.sessionTitle, '', ''),
+           window: composeTabTitle(marker, ui.sessionTitle, model, tabCwd ? shortCwd(tabCwd, 24) : '')
+         }
+-      : 'Hermes'
++      : ui.theme.brand.name
+   )
+ 
+   useEffect(() => {
+--- a/ui-tui/src/app/uiStore.ts
++++ b/ui-tui/src/app/uiStore.ts
+@@ -31,7 +31,7 @@
+   sessionTitle: '',
+   showReasoning: false,
+   sid: null,
+-  status: 'summoning hermes…',
++  status: 'summoning xiaoxi…',
+   statusBar: 'top',
+   storedSid: null,
+   statusBarFields: null,
+--- a/web/src/App.tsx
++++ b/web/src/App.tsx
+@@ -106,7 +106,7 @@
+ import { isDashboardEmbeddedChatEnabled } from "@/lib/dashboard-flags";
+ import { latchChatActivation } from "@/lib/chat-activation";
+ import { sharedGatewayProfiles, sharedGatewayRestartDescription } from "@/lib/shared-gateway";
+-import { api } from "@/lib/api";
++import { api, HERMES_BASE_PATH } from "@/lib/api";
+ import type { StatusResponse, UpdateCheckResponse } from "@/lib/api";
+ 
+ function RouteFallback({ label = "Loading…" }: { label?: string }) {
+@@ -551,8 +551,13 @@
+           <Menu />
+         </Button>
+ 
+-        <Typography className="font-bold text-[0.95rem] leading-[0.95] tracking-[0.05em] text-midground">
+-          {t.app.brand}
++        <img
++          src={`${HERMES_BASE_PATH}/ds-assets/xiaoxi-logo.png`}
++          alt="xiaoxi"
++          className="h-8 w-8 shrink-0 object-contain"
++        />
++        <Typography className="font-bold text-[0.95rem] leading-[0.95] tracking-[0.05em] text-midground lowercase">
++          xiaoxi
+         </Typography>
+       </header>
+ 
+@@ -601,9 +606,9 @@
+           >
+             <div
+               className={cn(
+-                "flex h-14 shrink-0 items-center gap-2",
++                "flex h-14 shrink-0 items-center justify-between gap-2 px-4",
+                 "border-b border-current/20",
+-                collapsed ? "lg:justify-center lg:px-0" : "px-4 justify-between",
++                collapsed && "lg:h-auto lg:flex-col lg:justify-center lg:gap-1 lg:px-0 lg:py-2",
+               )}
+             >
+               <div
+@@ -614,12 +619,28 @@
+               >
+                 <PluginSlot name="header-left" />
+ 
+-                <Typography className="font-bold text-[1.125rem] leading-[0.95] tracking-[0.0525rem] text-midground uppercase">
+-                  Hermes
+-                  <br />
+-                  Agent
++                <img
++                  src={`${HERMES_BASE_PATH}/ds-assets/xiaoxi-logo.png`}
++                  alt="xiaoxi"
++                  className="h-8 w-8 shrink-0 object-contain"
++                />
++                <Typography className="font-bold text-[1.125rem] leading-[0.95] tracking-[0.0525rem] text-midground lowercase">
++                  xiaoxi
+                 </Typography>
+               </div>
++
++              {collapsed && (
++                <div className="hidden flex-col items-center gap-1 lg:flex">
++                  <img
++                    src={`${HERMES_BASE_PATH}/ds-assets/xiaoxi-logo.png`}
++                    alt="xiaoxi"
++                    className="h-8 w-8 shrink-0 object-contain"
++                  />
++                  <Typography className="text-[0.6rem] leading-none text-midground lowercase">
++                    xiaoxi
++                  </Typography>
++                </div>
++              )}
+ 
+               <Button
+                 ghost
+--- a/web/src/components/SidebarFooter.tsx
++++ b/web/src/components/SidebarFooter.tsx
+@@ -1,11 +1,8 @@
+ import { Typography } from "@nous-research/ui/ui/components/typography/index";
+ import type { StatusResponse } from "@/lib/api";
+ import { cn } from "@/lib/utils";
+-import { useI18n } from "@/i18n";
+ 
+ export function SidebarFooter({ status }: SidebarFooterProps) {
+-  const { t } = useI18n();
+-
+   return (
+     <div
+       className={cn(
+@@ -20,18 +17,9 @@
+         {status?.version != null ? `v${status.version}` : "—"}
+       </Typography>
+ 
+-      <a
+-        href="https://nousresearch.com"
+-        target="_blank"
+-        rel="noopener noreferrer"
+-        className={cn(
+-          "font-sans text-display text-xs tracking-[0.12em] text-midground",
+-          "transition-opacity hover:opacity-90",
+-          "focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-midground/40",
+-        )}
+-      >
+-        {t.app.footer.org}
+-      </a>
++      <Typography className="font-sans text-display text-xs tracking-[0.12em] text-midground lowercase">
++        xiaoxi
++      </Typography>
+     </div>
+   );
+ }
+--- a/web/index.html
++++ b/web/index.html
+@@ -2,12 +2,12 @@
+ <html lang="en">
+   <head>
+     <meta charset="UTF-8" />
+-    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
++    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+     <meta
+       name="viewport"
+       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+     />
+-    <title>Hermes Agent - Dashboard</title>
++    <title>xiaoxi · DormSense</title>
+   </head>
+   <body>
+     <div id="root"></div>

@@ -4,6 +4,9 @@ FROM nousresearch/hermes-agent@sha256:39c4ac5a8eaecddc525cd680eb4bda1143f2b12e8f
 COPY apply_patch.py check_voice_dependencies.py requirements-voice.txt requirements-voice.lock /opt/xiaoxi/
 COPY patches/hermes.patch patches/manifest.json /opt/xiaoxi/patches/
 COPY workspace/AGENTS.md /opt/xiaoxi/workspace/AGENTS.md
+COPY skins/xiaoxi.yaml /opt/xiaoxi/skins/xiaoxi.yaml
+COPY branding/xiaoxi-logo.png branding/xiaoxi-login.png branding/apple-touch-icon.png /opt/hermes/web/public/ds-assets/
+COPY branding/favicon.ico /opt/hermes/web/public/favicon.ico
 
 RUN --network=none python -B /opt/xiaoxi/apply_patch.py --root /opt/hermes \
     && /opt/hermes/.venv/bin/python -I -B /opt/xiaoxi/check_voice_dependencies.py \
@@ -24,6 +27,7 @@ RUN --network=none /opt/hermes/.venv/bin/python -I -B \
 
 # Existing upstream node_modules only. No dependency install or network access.
 RUN --network=none cd /opt/hermes/web && npm run build
+RUN --network=none cd /opt/hermes/ui-tui && npm run build
 
 # Whisper weights are not downloaded or assumed present. Mount a reviewed,
 # pre-provisioned model directory read-only at /opt/data/whisper-base at deployment.

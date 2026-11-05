@@ -1,6 +1,6 @@
 """Apply and test the formal patch in an ephemeral pinned-image fixture.
 
-Reads only the six approved upstream sources and public installed TypeScript
+Reads only the approved upstream sources and public installed TypeScript
 compiler. No production container, runtime config, model, network, or audio API.
 """
 from __future__ import annotations
@@ -28,6 +28,7 @@ INPUTS = (
     "tests/test_transcription_normalization.py",
     "tests/test_patch_guard.py",
     "tests/test_voice_playback.cjs",
+    "tests/test_chat_continuation.cjs",
 )
 FIXTURE_PROGRAM = r'''
 import importlib.util
@@ -63,7 +64,7 @@ print(json.dumps(apply_patch(sources, manifest, patch)), flush=True)
 for relative in SOURCE_PATHS:
     if relative.endswith(".py"):
         compile((sources / relative).read_text(encoding="utf-8"), relative, "exec")
-print("Python compilation passed for all four patched modules", flush=True)
+print("Python compilation passed for all patched Python modules", flush=True)
 if not payload["frontend_only"]:
     suite = unittest.defaultTestLoader.discover(str(base / "tests"), pattern="test_*.py")
     result = unittest.TextTestRunner(verbosity=2).run(suite)
@@ -71,11 +72,14 @@ if not payload["frontend_only"]:
         raise SystemExit(1)
 sidebar = (sources / "web/src/components/ChatSidebar.tsx").read_text(encoding="utf-8")
 page = (sources / "web/src/pages/ChatPage.tsx").read_text(encoding="utf-8")
-tests = (base / "tests/test_voice_playback.cjs").read_text(encoding="utf-8")
-script = "globalThis.__sidebarSource = " + json.dumps(sidebar) + ";\n"
-script += "globalThis.__chatPageSource = " + json.dumps(page) + ";\n" + tests
-result = subprocess.run(["node", "-"], input=script, text=True, cwd="/opt/hermes/web", timeout=30, check=False)
-raise SystemExit(result.returncode)
+for name in ("test_voice_playback.cjs", "test_chat_continuation.cjs"):
+    tests = (base / "tests" / name).read_text(encoding="utf-8")
+    script = "globalThis.__sidebarSource = " + json.dumps(sidebar) + ";\n"
+    script += "globalThis.__chatPageSource = " + json.dumps(page) + ";\n" + tests
+    result = subprocess.run(["node", "-"], input=script, text=True, cwd="/opt/hermes/web", timeout=30, check=False)
+    if result.returncode:
+        raise SystemExit(result.returncode)
+raise SystemExit(0)
 '''
 
 

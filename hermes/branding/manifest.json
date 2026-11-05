@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "source": {
+    "path": "presentation/dormsense-intro/images/xiaoxi-dormsense-logo.png",
+    "sha256": "e70e8c8d83cbd349b01d736adeec67d8b0a2a1602830f00a413a22d8b77ba9b5",
+    "size": [
+      1254,
+      1254
+    ]
+  },
+  "generator": {
+    "pillow": "12.3.0",
+    "resampling": "LANCZOS",
+    "aspect_ratio": "preserved",
+    "crop": false
+  },
+  "files": {
+    "xiaoxi-logo.png": {
+      "sha256": "556a9c96c7d4846112d36421fd6265a825e438569b02647ead27bb9dc00fd7c8",
+      "size": [
+        512,
+        512
+      ],
+      "bytes": 355915
+    },
+    "xiaoxi-login.png": {
+      "sha256": "abd666e9f638c60e939b5700b50d63105cf673a6a379558c05089020b6f67cdb",
+      "size": [
+        192,
+        192
+      ],
+      "bytes": 72281
+    },
+    "apple-touch-icon.png": {
+      "sha256": "1a4a8c888effa673808c0917c1f5136ffe40218fc45b313be79f43c23f75c2f9",
+      "size": [
+        180,
+        180
+      ],
+      "bytes": 65157
+    },
+    "favicon.ico": {
+      "sha256": "35dd744518029ef3f43785dbb2a92718f713c3d1645e0cb3070117afef165fc5",
+      "size": [
+        256,
+        256
+      ],
+      "bytes": 175589
+    }
+  }
+}

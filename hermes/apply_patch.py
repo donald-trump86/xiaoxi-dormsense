@@ -1,4 +1,4 @@
-"""Apply the six-file XiaoXi patch only to its exact pinned upstream sources.
+"""Apply the XiaoXi patch only to its exact approved pinned upstream sources.
 
 Standard library only. Validate all inputs and all result hashes before writing
 any target. This is a build/isolated-test helper, never a live-container updater.
@@ -19,6 +19,16 @@ SOURCE_PATHS = (
     "tools/transcription_local.py",
     "web/src/components/ChatSidebar.tsx",
     "web/src/pages/ChatPage.tsx",
+    "hermes_cli/banner.py",
+    "hermes_cli/cli_render.py",
+    "hermes_cli/dashboard_auth/login_page.py",
+    "ui-tui/src/components/branding.tsx",
+    "ui-tui/src/theme.ts",
+    "ui-tui/src/app/useMainApp.ts",
+    "ui-tui/src/app/uiStore.ts",
+    "web/src/App.tsx",
+    "web/src/components/SidebarFooter.tsx",
+    "web/index.html",
 )
 BASE_IMAGE = (
     "nousresearch/hermes-agent@sha256:"
@@ -88,7 +98,7 @@ def patched_sources(patch: bytes, originals: dict[str, bytes]) -> dict[str, byte
         output.extend(original[cursor:])
         results[relative] = "".join(output).encode("utf-8")
     if set(results) != set(SOURCE_PATHS):
-        raise ValueError("Patch must cover exactly the approved six source files")
+        raise ValueError("Patch must cover exactly the approved source files")
     return results
 
 
@@ -100,7 +110,7 @@ def apply_patch(root: Path, manifest_path: Path, patch_path: Path, *, check: boo
         raise ValueError("Unsupported patch baseline")
     rows = manifest.get("files", [])
     if len(rows) != len(SOURCE_PATHS) or {row["path"] for row in rows} != set(SOURCE_PATHS):
-        raise ValueError("Manifest must name exactly the approved six source files")
+        raise ValueError("Manifest must name exactly the approved source files")
     patch = patch_path.read_bytes()
     if sha256(patch) != manifest.get("patch_sha256"):
         raise ValueError("Patch SHA-256 mismatch")

@@ -1,4 +1,4 @@
-"""Offline guard tests with synthetic six-file source trees; no Hermes imports."""
+"""Offline guard tests with synthetic approved source trees; no Hermes imports."""
 import difflib
 import hashlib
 import json
@@ -47,10 +47,10 @@ class PatchGuardTests(unittest.TestCase):
     def apply(self, **kwargs):
         return apply_patch(self.root, self.manifest_path, self.patch_path, **kwargs)
 
-    def test_check_then_apply_verifies_all_six_exact_results(self):
-        self.assertEqual(self.apply(check=True), {"verified_files": 6, "written": False})
+    def test_check_then_apply_verifies_all_approved_exact_results(self):
+        self.assertEqual(self.apply(check=True), {"verified_files": len(SOURCE_PATHS), "written": False})
         self.assertEqual(self.contents(), self.before)
-        self.assertEqual(self.apply(), {"verified_files": 6, "written": True})
+        self.assertEqual(self.apply(), {"verified_files": len(SOURCE_PATHS), "written": True})
         self.assertEqual(self.contents(), self.after)
 
     def test_changed_last_source_rejects_before_any_target_write(self):
