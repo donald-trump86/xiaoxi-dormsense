@@ -30,7 +30,7 @@
 | Hermes 插件测试 | 14 项红外 + 21 项天气 | `python -m unittest discover -s hermes/tests -p 'test_*plugin.py' -v` | 空调工具白名单、动态城市定位、天气观测新鲜度与输入边界 |
 | UNO R4 固件测试 | 39 项 | `pio test -d firmware/arduino-uno-r4 -e native` | SHT31 串口断帧拼接、EEPROM 启动计数、光敏归一化、点阵字模与三线按钮手势 |
 | ESP32-C3 固件测试 | 13 项 native + 22 项主机测试 | `pio test -d firmware/esp32-c3-ir -e native` 及 `python -m unittest discover -s firmware/esp32-c3-ir/test -p 'test_*.py' -v` | `learn1` 命令校验、脉冲时序格式化、NEC 离线分析器与 `IRremoteESP8266` 真实编解码协同 |
-| Hermes 离线补丁测试 | 37 项 Python + 32 项前端回调与横幅测试 | `python hermes/tests/run_offline.py` | 17 文件补丁精确重建、语音合成/转写边界、语音播放回调与日常单会话延续逻辑 |
+| Hermes 离线补丁测试 | 37 项 Python + 37 项前端回调，另验横幅 | `python hermes/tests/run_offline.py` | 17 文件补丁精确重建、语音合成/转写边界、语音播放回调与日常单会话延续逻辑 |
 
 ---
 

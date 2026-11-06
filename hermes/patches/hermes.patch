@@ -310,15 +310,16 @@
  import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
  import { useNavigate } from 'react-router'
  
-@@ -85,6 +85,7 @@
+@@ -85,6 +85,8 @@
    className?: string
    onDashboardNewSessionRequest?: () => void
    onSessionTitleChange?: (title: string | null) => void
 +  onSendVoiceText?: (text: string) => void
++  onSpeechInterruptionReady?: (interrupt: ((inputPending: boolean) => void) | null) => void
  }
  
  /** Build the ``session.create`` params for the sidecar session.
-@@ -102,12 +103,47 @@
+@@ -102,12 +104,48 @@
    }
  }
  
@@ -363,11 +364,12 @@
    onDashboardNewSessionRequest,
 -  onSessionTitleChange
 +  onSessionTitleChange,
-+  onSendVoiceText
++  onSendVoiceText,
++  onSpeechInterruptionReady
  }: ChatSidebarProps) {
    const navigate = useNavigate()
    // `version` bumps on reconnect (manual button, profile/channel switch) and
-@@ -146,6 +182,324 @@
+@@ -146,6 +184,335 @@
    // Short name of a just-saved model awaiting confirm to reload (a fresh chat
    // session is how the running chat adopts it; we confirm before discarding it).
    const [pendingReloadModel, setPendingReloadModel] = useState<string | null>(null)
@@ -388,6 +390,7 @@
 +  const [lastReplyText, setLastReplyText] = useState<string>('')
 +  const audioRef = useRef<HTMLAudioElement | null>(null)
 +  const ttsRequestRef = useRef<AbortController | null>(null)
++  const speechInputPendingRef = useRef(false)
 +  const recognitionRef = useRef<any>(null)
 +  const voiceInputRef = useRef<{ source: 'manual' | 'button'; stopRequested: boolean } | null>(null)
 +  const lastBtnEventRef = useRef<string | null>(null)
@@ -406,6 +409,16 @@
 +    setTtsSpeaking(false)
 +    setVoiceStatus(null)
 +  }, [])
++
++  const interruptSpeech = useCallback((inputPending: boolean) => {
++    speechInputPendingRef.current = inputPending
++    stopSpeaking()
++  }, [stopSpeaking])
++  useEffect(() => {
++    speechInputPendingRef.current = false
++    onSpeechInterruptionReady?.(interruptSpeech)
++    return () => onSpeechInterruptionReady?.(null)
++  }, [channel, profile, interruptSpeech, onSpeechInterruptionReady])
 +
 +  const speakWithXiaoxi = useCallback(async (rawText: string, overrideVoice?: string) => {
 +    const clean = prepareXiaoxiSpokenText(rawText)
@@ -692,7 +705,7 @@
  
    const refreshEffectiveModel = useCallback(() => {
      void api
-@@ -335,6 +689,16 @@
+@@ -335,6 +702,16 @@
      const offNewSession = feed.on('dashboard.new_session_requested', () => {
        onDashboardNewSessionRequest?.()
      })
@@ -701,7 +714,7 @@
 +      const txt = (payload?.text || '').trim()
 +      if (txt && payload?.status === 'complete') {
 +        setLastReplyText(txt)
-+        if (voicePlaybackRef.current.autoTts) {
++        if (voicePlaybackRef.current.autoTts && !speechInputPendingRef.current && !voiceInputRef.current) {
 +          void voicePlaybackRef.current.speakWithXiaoxi(txt)
 +        }
 +      }
@@ -709,7 +722,7 @@
  
      void connect()
  
-@@ -348,9 +712,62 @@
+@@ -348,9 +725,62 @@
        offState()
        offSessionInfo()
        offNewSession()
@@ -772,7 +785,7 @@
  
    // Seed the badge on mount and re-read it whenever the sockets are rebuilt
    // (a profile/channel switch bumps `version`).
-@@ -406,6 +823,83 @@
+@@ -406,6 +836,83 @@
          <Badge tone={STATE_TONE[state]} className="shrink-0">
            {STATE_LABEL[state]}
          </Badge>
@@ -1104,15 +1117,21 @@
    const titleScope = `${channel}\0${reconnectNonce}`;
    const sessionTitle =
      sessionTitleState.scope === titleScope ? sessionTitleState.title : null;
-@@ -512,6 +650,16 @@
+@@ -512,6 +650,22 @@
      return () => setEnd(null);
    }, [isActive, narrow, mobilePanelOpen, modelToolsLabel, setEnd]);
  
++  const voiceInterruptRef = useRef<((inputPending: boolean) => void) | null>(null);
++  const registerSpeechInterruption = useCallback((interrupt: ((inputPending: boolean) => void) | null) => {
++    voiceInterruptRef.current = interrupt;
++  }, []);
++
 +  const sendVoiceTextToPty = useCallback((text: string) => {
 +    const clean = text.trim();
 +    if (!clean) return;
 +    const ws = wsRef.current;
 +    if (ws && ws.readyState === WebSocket.OPEN) {
++      voiceInterruptRef.current?.(false);
 +      ws.send(clean + "\r");
 +      termRef.current?.focus();
 +    }
@@ -1121,7 +1140,7 @@
    const handleCopyLast = () => {
      const ws = wsRef.current;
      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-@@ -536,7 +684,7 @@
+@@ -536,7 +690,7 @@
      // until the chat tab has been activated. Prevents the persistently
      // mounted, hidden ChatPage from opening `/api/pty` on every dashboard
      // page. Sticky, so switching away from /chat keeps the PTY alive.
@@ -1130,7 +1149,7 @@
  
      const host = hostRef.current;
      if (!host) return;
-@@ -1097,6 +1245,68 @@
+@@ -1097,6 +1251,68 @@
      // ``return cleanup`` stays at the top level; handlers + disposables
      // are hoisted to ``let`` bindings the cleanup closes over.
      let unmounting = false;
@@ -1199,7 +1218,7 @@
      // The implicit active-session fallback (no `?resume=` on the URL) only
      // becomes known once the server's control frame arrives (see
      // `ws.onmessage` below) — everything gated on "is this a resume replay"
-@@ -1224,14 +1434,15 @@
+@@ -1224,14 +1440,15 @@
        scheduleReconnect(null);
      };
      void (async () => {
@@ -1218,7 +1237,15 @@
        // Profile-scoped chat: the PTY child gets HERMES_HOME pointed at the
        // selected profile, so the conversation runs with that profile's model,
        // skills, memory, and sessions (see web_server._resolve_chat_argv).
-@@ -1556,6 +1767,11 @@
+@@ -1520,6 +1737,7 @@
+         if (normalized.normalized) {
+           mobileReplacementInputUntilRef.current = 0;
+         }
++        voiceInterruptRef.current?.(normalized.nextLine.length > 0);
+         ws.send(normalized.data);
+       };
+       // The deferred composition fallback is already committed text, so it
+@@ -1556,6 +1774,11 @@
  
      return () => {
        unmounting = true;
@@ -1230,7 +1257,7 @@
        imageUploadDisposed = true;
        syncMetricsRef.current = null;
        clearEraseSuppressionTimer();
-@@ -1613,6 +1829,9 @@
+@@ -1613,6 +1836,9 @@
      };
    }, [
      hasActivated,
@@ -1240,19 +1267,21 @@
      channel,
      clearReconnectTimer,
      resumeParam,
-@@ -1861,6 +2080,7 @@
+@@ -1861,6 +2087,8 @@
                  profile={scopedProfile}
                  onDashboardNewSessionRequest={startFreshDashboardChat}
                  onSessionTitleChange={handleSessionTitleChange}
 +                onSendVoiceText={sendVoiceTextToPty}
++                onSpeechInterruptionReady={registerSpeechInterruption}
                />
              </div>
              <ChatSessionList
-@@ -2068,6 +2288,7 @@
+@@ -2068,6 +2296,8 @@
                  profile={scopedProfile}
                  onDashboardNewSessionRequest={startFreshDashboardChat}
                  onSessionTitleChange={handleSessionTitleChange}
 +                onSendVoiceText={sendVoiceTextToPty}
++                onSpeechInterruptionReady={registerSpeechInterruption}
                />
              </div>
  

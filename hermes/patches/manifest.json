@@ -3,7 +3,7 @@
   "upstream_repository": "https://github.com/NousResearch/hermes-agent",
   "base_image": "nousresearch/hermes-agent@sha256:39c4ac5a8eaecddc525cd680eb4bda1143f2b12e8f21e2d63c2d5d471a8390c8",
   "upstream_root": "/opt/hermes",
-  "patch_sha256": "e9fa13506ab8d612ee845b46fa9f043950bfd14fae2ebfcfc77727d4554488b2",
+  "patch_sha256": "98949943aeeda1f78dd134364e095eae51156d32b7bd3dc0286417bd687410ab",
   "observed_source_date": "2026-11-05",
   "intentional_formal_difference": "Remove semantic STT substitutions; preserve zhconv Simplified Chinese conversion.",
   "files": [
@@ -35,12 +35,12 @@
     {
       "path": "web/src/components/ChatSidebar.tsx",
       "before_sha256": "50148fbe0b0010a4f83ad885407cbe9d2858dd14ba7e4bf7cde065aa1a7a06ee",
-      "after_sha256": "6fcf21a6490a1e48e6a086b66fe63ed4ee14d0cf4239494d1249375aef613aba"
+      "after_sha256": "1818264e18dd10d7e63ff14e659fb6db7a945aa3bc378eba94f84a97decd2d1d"
     },
     {
       "path": "web/src/pages/ChatPage.tsx",
       "before_sha256": "c638d207d6219011f7d1d3ac35062a244b84b0b47875ae11ad7f97e37d7110bd",
-      "after_sha256": "63f7855d7b1b50cf0edc011b3d63171cf8fd627f61278a967e1a4ae445a339eb"
+      "after_sha256": "a3d119771ec5850707baa146eeaffd57684834c2bf63395b12f19122c3f1d65a"
     },
     {
       "path": "hermes_cli/banner.py",

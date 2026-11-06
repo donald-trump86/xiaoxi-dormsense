@@ -18,6 +18,29 @@ const page = ts.transpileModule(globalThis.__chatPageSource, {
 })
 const pageErrors = (page.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error)
 assert.equal(pageErrors.length, 0, pageErrors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('\n'))
+const pageAst = ts.createSourceFile('ChatPage.tsx', globalThis.__chatPageSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+function actualDeclaration(name) {
+  const matches = []
+  function visit(node) {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) matches.push(node)
+    ts.forEachChild(node, visit)
+  }
+  visit(pageAst)
+  assert.equal(matches.length, 1, `ChatPage must wire ${name} exactly once`)
+  return `const ${matches[0].getText(pageAst)};`
+}
+const parentSource = ['registerSpeechInterruption', 'sendVoiceTextToPty', 'forwardPtyData'].map(actualDeclaration).join('\n')
+const parentCode = ts.transpileModule(parentSource, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+function inputFixture() {
+  const events = [], interruptRef = { current: null }, line = { current: '' }
+  const socket = { readyState: 1, send(data) { this.onSend?.(); events.push(['send', data]) } }
+  const terminal = { focus() {}, write() {} }
+  const initializeInput = new Function('useCallback', 'voiceInterruptRef', 'wsRef', 'termRef', 'WebSocket', 'ws', 'term', 'SGR_MOUSE_RE', 'ptyStateRef', 'shouldBlockPtyInput', 'blockedInputNoticeRef', 'PTY_RECONNECT_INPUT_MESSAGE', 'normalizePtyMobileInput', 'ptyInputLineRef', 'mobileReplacementInputUntilRef', `${parentCode}\nreturn { registerSpeechInterruption, sendVoiceTextToPty, forwardPtyData }`)
+  const controls = initializeInput(fn => fn, interruptRef, { current: socket }, { current: terminal }, { OPEN: 1 }, socket, terminal,
+    /^\x1b\[<(\d+);(\d+);(\d+)([Mm])$/, { current: 'ready' }, () => false, { current: false }, 'stub reconnect',
+    data => ({ data, nextLine: /[\r\n]/.test(data) ? '' : data, normalized: false }), line, { current: 0 })
+  return { ...controls, interruptRef, socket, events }
+}
 const js = transpiled.outputText
 const normalizeStart = js.indexOf('function prepareXiaoxiSpokenText(')
 assert(normalizeStart >= 0, 'Playback uses the actual staged speech text helper')
@@ -26,7 +49,7 @@ const callbackBlock = js.slice(js.indexOf('const stopSpeaking = useCallback('), 
 const eventBlock = js.slice(js.indexOf("const offMsgComplete = feed.on('message.complete'"), js.indexOf('void connect()', js.indexOf('const offMsgComplete')))
 assert(callbackBlock.startsWith('const stopSpeaking'))
 assert(eventBlock.startsWith('const offMsgComplete'))
-const inputs = ['useCallback', 'useRef', 'useEffect', 'audioRef', 'ttsRequestRef', 'setTtsSpeaking', 'setVoiceStatus', 'setPlaybackSource', 'ttsVoice', 'autoTts', 'profile', 'channel', 'fetchJSON', 'Audio', 'window', 'SpeechSynthesisUtterance', 'feed', 'setLastReplyText']
+const inputs = ['useCallback', 'useRef', 'useEffect', 'audioRef', 'ttsRequestRef', 'setTtsSpeaking', 'setVoiceStatus', 'setPlaybackSource', 'ttsVoice', 'autoTts', 'profile', 'channel', 'fetchJSON', 'Audio', 'window', 'SpeechSynthesisUtterance', 'feed', 'setLastReplyText', 'speechInputPendingRef', 'voiceInputRef', 'onSpeechInterruptionReady']
 const initialize = new Function(...inputs, `${normalizeBlock}\n${callbackBlock}\n${eventBlock}\nreturn { stopSpeaking, speakWithXiaoxi, voicePlaybackRef, offMsgComplete }`)
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const deferred = () => {
@@ -38,6 +61,9 @@ const edgeResult = voice => ({ ok: true, provider: 'edge', voice, data_url: `dat
 function fixture(fetchImpl = async () => edgeResult('zh-CN-XiaoxiaoNeural')) {
   const state = {}, audio = [], native = [], requests = [], cleanups = [], subscriptions = []
   const audioRef = { current: null }, ttsRequestRef = { current: null }
+  const speechInputPendingRef = { current: false }, voiceInputRef = { current: null }
+  const parent = inputFixture()
+  let nativeCancels = 0
   let stableRef
   let playImpl = async () => {}
   class AudioStub {
@@ -47,7 +73,7 @@ function fixture(fetchImpl = async () => edgeResult('zh-CN-XiaoxiaoNeural')) {
   }
   class UtteranceStub { constructor(text) { this.text = text } }
   const browser = { speechSynthesis: {
-    cancel() {},
+    cancel() { nativeCancels++ },
     getVoices() { return [{ name: 'Stub 中文声线', lang: 'zh-CN' }] },
     speak(utterance) { native.push(utterance); utterance.onstart?.() },
   } }
@@ -60,10 +86,12 @@ function fixture(fetchImpl = async () => edgeResult('zh-CN-XiaoxiaoNeural')) {
       value => { state.source = value }, voice, auto, 'test-profile', 'chat-1',
       (url, init) => { requests.push({ url, init }); return fetchImpl(url, init) },
       AudioStub, browser, UtteranceStub, feed, value => { state.lastReply = value },
+      speechInputPendingRef, voiceInputRef, parent.registerSpeechInterruption,
     )
   }
   const runtime = render()
-  return { state, audio, native, requests, runtime, render, cleanups, subscriptions, setPlay: fn => { playImpl = fn } }
+  return { state, audio, native, requests, runtime, render, cleanups, subscriptions, parent, voiceInputRef,
+    get nativeCancels() { return nativeCancels }, setPlay: fn => { playImpl = fn } }
 }
 const cases = []
 const test = (name, fn) => cases.push({ name, fn })
@@ -219,11 +247,77 @@ test('existing event subscriber uses latest voice and auto-play toggle', async (
   assert.equal(f.requests.length, 1)
   assert.equal(f.state.lastReply, 'muted reply')
 })
+test('accepted typing stops audio synchronously and suppresses auto speech until submission', async () => {
+  const f = fixture()
+  await f.runtime.speakWithXiaoxi('old reply')
+  f.parent.forwardPtyData('my early answer')
+  assert.equal(f.audio[0].paused, true)
+  assert.equal(f.requests[0].init.signal.aborted, true)
+  assert.equal(f.state.speaking, false)
+  assert.deepEqual(f.parent.events, [['send', 'my early answer']])
+  f.subscriptions[0].handler({ payload: { text: 'late reply while typing', status: 'complete' } })
+  await tick()
+  assert.equal(f.requests.length, 1)
+  f.parent.forwardPtyData('\r')
+  f.subscriptions[0].handler({ payload: { text: 'new reply after submission', status: 'complete' } })
+  await tick()
+  assert.equal(f.requests.length, 2)
+  assert.equal(f.audio.length, 2)
+})
+test('direct voice text submission aborts synthesis before sending and ignores its late response', async () => {
+  const old = deferred(), f = fixture(() => old.promise)
+  const pending = f.runtime.speakWithXiaoxi('old reply')
+  f.parent.socket.onSend = () => assert.equal(f.requests[0].init.signal.aborted, true)
+  f.parent.sendVoiceTextToPty(' new answer ')
+  assert.equal(f.requests[0].init.signal.aborted, true)
+  assert.deepEqual(f.parent.events, [['send', 'new answer\r']])
+  old.resolve(edgeResult('zh-CN-XiaoxiaoNeural'))
+  await pending
+  assert.equal(f.audio.length + f.native.length, 0)
+})
+test('new input cancels native speech and stale native callbacks cannot resume it', async () => {
+  const f = fixture()
+  await f.runtime.speakWithXiaoxi('old reply', 'browser-native')
+  const cancels = f.nativeCancels
+  f.parent.forwardPtyData('answer')
+  assert.equal(f.nativeCancels, cancels + 1)
+  f.native[0].onstart()
+  f.native[0].onerror({ error: 'interrupted old speech' })
+  assert.equal(f.state.speaking, false)
+  assert.equal(f.state.status, null)
+})
+test('recording and pending transcription suppress auto speech without muting the next reply', async () => {
+  const f = fixture()
+  f.voiceInputRef.current = { source: 'button', stopRequested: false }
+  f.subscriptions[0].handler({ payload: { text: 'old reply during recording', status: 'complete' } })
+  f.voiceInputRef.current.stopRequested = true
+  f.subscriptions[0].handler({ payload: { text: 'old reply during transcription', status: 'complete' } })
+  await tick()
+  assert.equal(f.requests.length, 0)
+  f.voiceInputRef.current = null
+  f.subscriptions[0].handler({ payload: { text: 'new answer', status: 'complete' } })
+  await tick()
+  assert.equal(f.requests.length, 1)
+})
+test('mouse reports, disconnected input and empty voice text do not interrupt playback', async () => {
+  const f = fixture()
+  await f.runtime.speakWithXiaoxi('old reply')
+  f.parent.forwardPtyData('\x1b[<0;1;1M')
+  f.parent.socket.readyState = 3
+  f.parent.forwardPtyData('cannot submit')
+  f.parent.sendVoiceTextToPty('cannot submit')
+  f.parent.socket.readyState = 1
+  f.parent.sendVoiceTextToPty('   ')
+  assert.equal(f.audio[0].paused, false)
+  assert.equal(f.requests[0].init.signal.aborted, false)
+  assert.equal(f.parent.events.length, 0)
+})
 test('channel/profile/unmount cleanup cancels pending playback', async () => {
   const old = deferred()
   const f = fixture(() => old.promise)
   const pending = f.runtime.speakWithXiaoxi('hello')
   f.cleanups.forEach(fn => fn())
+  assert.equal(f.parent.interruptRef.current, null)
   old.reject(new Error('stub request cancelled'))
   await pending
   assert.equal(f.requests[0].init.signal.aborted, true)

@@ -31,6 +31,7 @@
    - `tools/tts_text_normalize.py`：中文语境下将百分比、温度及常用单位转成中文读法，保留负号、小数与范围含义；英文保留原有处理。网页本地朗读入口使用相同规则，屏幕消息和历史原文保持原样。
 2. **网页侧边栏语音卡片与日常单会话自动延续（2 个核心前端页面）**
    - `web/src/components/ChatSidebar.tsx`：新增“小西语音交互”控制卡片，支持麦克风录音转写、自动播报开关、7 种中文声线选择与状态提示。
+   - 开始录音、输入文字或发送新问题时立即停止当前播报，并取消尚未返回的合成请求。输入草稿、录音和等待转写期间不自动朗读新到的回复；提交后恢复原有自动播报设置。
    - `web/src/pages/ChatPage.tsx`：
      - 监听 `eventsFeedClient` 的 `message.complete` 事件自动朗读助手最新回复，并通过 `latestCallbackRef` 与 `AbortController` 防止切页或连续消息时的旧音频串音。
      - 按 `[hermes.chat.last-session.v1, HERMES_BASE_PATH, profile]` 在浏览器 `localStorage` 中持久化当前会话的数据库 ID（`stored_session_id`），刷新或重开页面时自动通过 `getSessionLatestDescendant` 续接同一日常会话，同时完整保留点击 `New (empty)` 新建空白会话与点击历史记录切换会话的能力。
