@@ -394,10 +394,13 @@ class GatewayTests(unittest.TestCase):
         self.assertLessEqual(server.request_queue_size, 8)
 
     def test_malformed_request_fixed_error_no_store(self):
-        status, value, backend = self.request(raw=b"GET /api/states HTTP/not-a-version\r\n\r\n")
-        self.assertEqual(status, 400)
-        self.assertEqual(value, {"error": "bad_request"})
-        self.assertEqual(backend.calls, [])
+        for raw in [b"GET /api/states HTTP/not-a-version\r\n\r\n",
+                    b"INVALID\r\n\r\n", b"POST /api/states\r\n\r\n"]:
+            with self.subTest(raw=raw):
+                status, value, backend = self.request(raw=raw)
+                self.assertEqual(status, 400)
+                self.assertEqual(value, {"error": "bad_request"})
+                self.assertEqual(backend.calls, [])
 
     def test_verified_private_ids_still_only_node01_temperature_and_humidity(self):
         allowed = (TEMPERATURE + "_2", HUMIDITY + "_3")

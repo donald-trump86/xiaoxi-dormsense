@@ -311,6 +311,8 @@ def _project_entity(value, expected_id):
 
 class ReadGatewayHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
+    # Keep status and no-store headers on request-line errors in older Python.
+    default_request_version = "HTTP/1.0"
 
     def setup(self):
         self.request.settimeout(TIMEOUT_SECONDS)
