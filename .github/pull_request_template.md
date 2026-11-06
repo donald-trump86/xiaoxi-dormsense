@@ -1,28 +1,30 @@
-## 本次修改内容
+## 变更概述
 
-<!-- 关联已有 Issue（若有）、解决的问题与不包含的内容。 -->
+- 简要说明本次 PR 解决的问题、新增的功能或重构的模块：
+- 关联的 Issue 或课程任务阶段：
 
-## 所属模块
+## 涉及模块
 
-<!-- firmware / MQTT / home-assistant / analytics / hermes / tests / docs -->
+- [ ] `firmware/`（Arduino UNO R4 WiFi / ESP32-C3 固件与单元测试）
+- [ ] `schemas/` 或 `docs/mqtt-protocol.md`（MQTT 协议与 JSON Schema 契约）
+- [ ] `services/bridge/` 或 `services/ir_learning/`（安全桥接服务 / 红外学习服务）
+- [ ] `home-assistant/` 或 `deploy/`（实体配置、保留策略、Docker Compose 编排）
+- [ ] `analytics/`（滑动窗口统计与一维因果卡尔曼滤波）
+- [ ] `hermes/`（语音/会话/品牌补丁、原生插件、工作区规则）
+- [ ] `docs/` 或 `presentation/`（架构文档、实验说明、展示材料）
 
-## 测试方式与实际结果
+## 本地验证结果
 
-<!-- 写出命令、环境、真实结果；明确离线/模拟/实物、未验证项和原因。 -->
+请勾选或粘贴本次已执行的验证命令：
 
-## 公共接口
+- [ ] `python scripts/check_repository.py`
+- [ ] `python -m unittest discover -s tests -p 'test_*.py' -v`
+- [ ] `python -m unittest discover -s services/bridge/tests -p 'test_*.py' -v`
+- [ ] `python -m unittest discover -s analytics/tests -p 'test_*.py' -v`
+- [ ] `python -m unittest discover -s services/ir_learning/tests -p 'test_*.py' -v`
+- [ ] 子模块专项测试（如 `pio test -e native`、`hermes/tests/run_offline.py` 等）：
 
-- [ ] 未修改公共接口
-- [ ] 修改了 Topic / JSON / HA实体 / 工具接口 / 配置（列出变更与迁移影响）
-- [ ] 已请受影响模块负责人审查
+## 配置与兼容性检查
 
-## 文档与安全
-
-- [ ] 已更新相关文档，或说明不需要更新的原因
-- [ ] 不包含密码、Token、SSH Key、私人活动记录或未经授权的形象素材
-- [ ] 模拟数据明确标记，未虚构实验结果
-- [ ] 重要 AI 辅助工作已按 docs/ai-usage.md 记录（如适用）
-
-## 风险 / 回滚 / 后续工作
-
-<!-- 尚未实现功能应明确 Planned；控制设备变更须说明权限与安全边界。 -->
+- [ ] 未包含任何真实密码、Token、私钥或个人敏感信息（均使用 `.example` 占位模板）
+- [ ] 若修改了 Topic、Schema 或实体 ID，已同步更新关联的网关、验证器与文档

@@ -1,55 +1,48 @@
-# AI Agent 开发约定
+# 仓库开发与协作规范（AGENTS.md）
 
-本文件适用于整个仓库。各工具不一定自动识别 AGENTS.md，使用者应主动加载它和负责模块的 README；不能以工具未自动读取为由绕过约定。
+本文档为参与 **XiaoXi DormSense（交小西宿舍智能体）** 开发、维护与代码学习的同学及 AI 编程助手提供统一的工程规范。
 
-## 项目与目标
+## 1. 项目结构与分层职责
 
-XiaoXi DormSense（交小西宿舍智能体）是本科课程项目，结合无线传感网络与大数据基础。已确认 UNO R4 WiFi 及部分未明确型号传感器。工程初始化不等于功能完成，不假设 HA、Hermes、传感器驱动或 ESP32 已可用。
+系统按职责划分为四个解耦层级，修改代码时请保持边界清晰：
 
-## 架构约束
+1. **硬件固件层（`firmware/`）**
+   - [firmware/arduino-uno-r4/](firmware/arduino-uno-r4/README.md)：`node01` 环境感知与点阵陪伴节点（SHT31 UART 解析、LM393 光照归一化、三线按钮手势、12×8 LED 点阵动画）。
+   - [firmware/esp32-c3-ir/](firmware/esp32-c3-ir/README.md)：`node02` 红外收发与学习节点（`learn1` 300 项原始微秒脉冲采集、14 字段状态解码、挑战码单次回放）。
+   - 核心纯逻辑均抽离在 `include/*.h` 头文件中，便于在不连接开发板时通过 `pio test -e native` 或主机编译器直接运行单元测试。
+2. **数据契约与桥接服务层（`schemas/`、`services/`）**
+   - [schemas/telemetry.schema.json](schemas/telemetry.schema.json) 与 [docs/mqtt-protocol.md](docs/mqtt-protocol.md) 定义统一消息格式。
+   - [services/bridge/](services/bridge/README.md) 包含 `validator.py`（遥测校验与防重放）、`read_gateway.py`（五实体只读网关）、`inference_egress.py`（HTTPS 域名白名单代理）与 `dashboard_ingress.py`（9119 入口转发）。
+   - [services/ir_learning/](services/ir_learning/README.md) 管理空调遥控器逐键学习会话、前后状态防呆比对与本地受控回放。
+3. **平台与数据分析层（`home-assistant/`、`analytics/`）**
+   - [home-assistant/](home-assistant/README.md) 存放 MQTT 实体定义与 24 小时滚动历史清理自动化。
+   - [analytics/](analytics/README.md) 提供 24 小时滑动窗口统计、一维因果卡尔曼滤波（`environment.py`）与 SQLite 只读报表工具（`recorder_report.py`）。
+4. **智能体与界面定制层（`hermes/`）**
+   - [hermes/](hermes/README.md) 基于固定摘要的 Hermes 镜像，通过 `patches/hermes.patch`、`plugins/xiaoxi_ir_learning/`、`skins/xiaoxi.yaml`、`branding/` 和 `workspace/AGENTS.md` 实现语音交互、日常单会话延续、红外学习工具与交小西品牌界面。
 
-- 主链 **Arduino → Wi-Fi/MQTT → Home Assistant → Hermes Agent**。
-- 分析通过[架构文档](docs/architecture.md)约定的 Broker 只读遥测镜像获取数据，保存 received_at 和原始 payload；不能直接控制设备。
-- Agent 查询当前状态走 HA；历史统计接口与自定义 Skill 尚 Planned，不编造 HTTP 路径、CLI、配置或工具签名。依赖上游行为先核查[Hermes 来源记录](hermes/README.md)，必要时重新核查版本。
-- 不逐样本调用 LLM，采样、异常检测、时效性和拒绝逻辑由确定性程序负责。不为小项目随意引入重服务或跨模块耦合。
-- 控制仅能通过经审查的 HA 安全路径；当前默认不启用。提示词、Skill 和上游有限危险域黑名单都不是细粒度权限边界。
+## 2. 配置、凭据与隐私规范
 
-## 代码与配置
+- **严禁提交真实凭据**：Wi-Fi 密码、MQTT 账号密码、TLS 私钥、Home Assistant Token（`HASS_TOKEN` / `HASS_BACKEND_TOKEN`）、红外学习 Token 与大模型 API Key 只能存放在已列入 `.gitignore` 的本地私有文件（如 `.env`、`include/secrets.h`、`deploy/runtime/`、`experiments-private/`）中。
+- **公开模板使用占位符**：跟踪的示例配置统一放在 `.env.example`、`deploy/secure.env.example`、`deploy/examples/` 和 `include/secrets.example.h` 中。
+- **区分模拟与实测数据**：模拟器（`simulator/mqtt_node.py`）与测试夹具统一使用 `simulated: true` 和测试节点编号（如 `node90`），实机节点使用 `node01` / `node02` 及 `simulated: false`。
 
-Python 3.11+ 遵循 PEP 8，函数职责清晰；Arduino 使用模块化 C++，非阻塞采样和明确的失败状态。UTF-8，LF。配置与代码分离，不硬编码 Wi-Fi/MQTT 密码、Token 或 API Key，不记录秘密到日志或错误消息。
+## 3. 常用验证命令
 
-读已有文件后再改，保留许可证和他人工作。避免随意升级依赖、整体格式化无关文件、复制 Hermes 上游。传感器型号、供电、接线与板卡支持未知时先询问/记待确认，禁止猜测生成驱动。
-
-## MQTT 契约
-
-所有发送端、HA配置、分析与测试遵守 [docs/mqtt-protocol.md](docs/mqtt-protocol.md) 与 [Schema](schemas/telemetry.schema.json)。未经评审讨论不要修改已评审的通信协议。接口变化必须同一个 PR 更新契约、示例、消费者与测试并说明兼容性。
-
-时间未同步则 timestamp=null；缺测通道=null；使用 boot_id+sequence 分段去重；合成数据 simulated=true，不把归一化 light 当作 lux。
-
-## 模块边界
-
-改动范围限定在所负责模块的目录，不要未经请求重构其他正在开发的模块。确需公共接口变更先说明影响并安排评审；同一文件被同时编辑时先协调，禁止覆盖、重置或删除未提交成果。
-
-## 测试与文档
+修改代码或文档后，请在根目录 `.venv` 虚拟环境中运行对应的检查：
 
 ```bash
-python -m pip install -r requirements-dev.txt
-python -m unittest discover -s tests -p 'test_*.py' -v
+source .venv/bin/activate
 python scripts/check_repository.py
+python -m unittest discover -s tests -p 'test_*.py' -v
+python -m unittest discover -s services/bridge/tests -p 'test_*.py' -v
+python -m unittest discover -s analytics/tests -p 'test_*.py' -v
+python -m unittest discover -s services/ir_learning/tests -p 'test_*.py' -v
+python -m unittest discover -s hermes/tests -p 'test_ir_learning_plugin.py' -v
 ```
 
-在虚拟环境执行。新功能提供单元、模拟、静态配置或明确的人工验收步骤。记录实际运行命令、结果与未覆盖范围；不能把语法/模拟测试通过表述为实物、网络或完整系统可用。依赖缺失/硬件不可达应报告，而不是编造结果。
+若修改了固件头文件或 `hermes/` 补丁，请同步运行对应子模块的测试（详见 [测试说明](tests/README.md)）。
 
-接口、环境变量、目录或部署命令改变时同步更新 README 与相关 docs。Planned 明确标注；不使用“已完成”描述未经验收的功能。
+## 4. 文档与 Git 提交规范
 
-## Git 与协作
-
-遵守 [GitHub Flow](docs/development.md)：main 稳定，分支开发，小粒度 PR，说明模块、公共接口和测试，至少一名其他开发者审查。AI 不应未经明确授权 commit/push、改远程设置、建 Release 或批量 Issues；禁止 force push、泄露凭据与覆盖他人改动。人工合并，冲突先沟通。
-
-## AI 使用、学术诚信与安全
-
-绝不编造硬件测试结果、传感器数据、无线网络性能、实验结论、参考文献或实际运行截图。可生成清楚标注的模拟数据，只用于开发/方法验证，不能代替真实课程实验。不得去掉 simulated 标识，不把 AI 输出直接当作科学结论。
-
-重要代码生成、架构或实验分析按 [AI 使用记录模板](docs/ai-usage.md)记工具、目的、生成内容、人工修改和验证；不必记录普通聊天。生成结果必须由提交者理解并承担责任，不伪造人工复核记录。
-
-不提交真实宿舍成员信息、活动轨迹、访问 Token、SSH Key 或原始私密日志。不得将个人数据交给第三方 LLM；引用资源核实出处和许可证。本项目不是西安交通大学或相关虚拟形象官方项目，不擅用受保护形象素材。
+- **文档风格**：保持清晰、自然、易读的技术说明风格，讲清模块定位、实现原理、配置步骤与操作命令，便于后续同学学习与二次开发；避免堆砌空泛套话或重复的免责声明，版本演进直接通过 Git 历史和 [提交学习索引](docs/commit-guide.md) 查阅。
+- **细粒度提交**：按功能模块与依赖关系组织原子化的 Git 提交，提交前确保 `python scripts/check_repository.py`、相关测试套件与 `git diff --check` 通过。

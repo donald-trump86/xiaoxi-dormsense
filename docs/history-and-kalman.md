@@ -1,76 +1,73 @@
-# 一天历史、滤波与预测边界
+# 24 小时历史数据保留与一维因果卡尔曼滤波
 
-更新于 2026-11-05。三类环境数据已应用一天保留策略，并实现只读窗口统计和一维卡尔曼当前估计。未来趋势预测、独立归档采集器和 Hermes 历史摘要接口仍未实现。
+本文介绍项目如何管理 Home Assistant 的传感器历史数据体积，以及如何利用 [analytics/](../analytics/README.md) 模块对温湿度与光照时间序列进行清洗、统计和一维因果卡尔曼滤波平滑估计。
 
-## 当前能力
+---
 
-| 能力 | 当前事实 |
-| --- | --- |
-| 读取当前环境 | 真实 node01 温湿度/光照 → TLS MQTT → validator → HA → 固定实体只读网关 → Hermes |
-| 保存与清理历史 | HA recorder 保存状态；仅这三类环境实体每 5 分钟及 HA 启动时清理一天前状态 |
-| 窗口统计 | 已有标准库只读报告，按固定三实体与最近 86,400 秒筛选、质量校验和去重 |
-| 当前状态估计 | 已实现按实际接收间隔运行的独立一维卡尔曼滤波，有缺测/重启/间断重置和 35 秒时效检查 |
-| Hermes 查询历史窗口 | 尚未实现；网关仍只开放固定五个实体的当前状态 GET |
-| 趋势预测、异常检测、日报 API | 尚未实现，没有经过实测验证的预测参数或精度指标 |
+## 1. 为什么需要滚动保留与卡尔曼滤波？
 
-## 24 小时保留如何生效
+`node01` 每 10 秒上报一次温度、湿度和光照（每天单通道约 8,640 条记录，三通道合计约 2.5 万条状态变化）。在长期运行中需要解决两个问题：
 
-用户明确选择只处理温度、湿度和相对亮度。其他 HA 设备历史、聊天和实验记录保留原策略。
+1. **数据库体积控制**：如果不加限制地保留所有原始采样点和长期统计汇总表，SQLite 数据库（`home-assistant_v2.db`）会持续增长。同时，聊天记录、配置与其它实体状态又需要正常保留。
+2. **量化跳变与断流处理**：SHT31 串口读数（分辨率 `0.1°C` / `0.1%RH`）与 LM393 ADC 读数在稳态附近会出现微幅抖动；若直接做全窗口简单均值，无法反映最新时刻的即时状态；若不识别 35 秒断流与设备重启，则会在断线重连处产生错误的跨区间插值。
 
-[自动化](../home-assistant/automations/environment-retention.yaml)调用原生 `recorder.purge_entities`，只传三个固定实体与 `keep_days: 1`，每 5 分钟及 HA 启动时执行。不修改全局 `recorder.purge_keep_days`。如果只用 HA 默认的每日 purge，即使设为一天，清理间隔仍会让记录年龄接近两天。
+---
 
-普通状态 purge 不清理统计表。因此三路模板已去掉 `state_class: measurement`，停止后续短期/长期统计；现有实例通过管理员原生 WebSocket `recorder/clear_statistics`，以精确三个 `statistic_ids` 一次性清除它们原有的全部统计摘要。这个接口没有时间截止参数；最近一天的原始状态保留，报告直接从这些原始状态重新计算。新实例从本模板开始不产生这些长期统计，已有实例迁移则须单独处理，不能通过全库删表代替。
+## 2. Home Assistant 24 小时精准滚动保留策略
 
-查询严格筛选 `[now-86400s, now]`；物理删除会滞后至下一次 5 分钟触发及 recorder 队列处理。记录删除也不等于 SQLite 文件立即缩小或安全擦除，没有执行全库重打包。
+配置文件位于 [home-assistant/automations/environment-retention.yaml](../home-assistant/automations/environment-retention.yaml) 与 [home-assistant/mqtt/real/node01.yaml](../home-assistant/mqtt/real/node01.yaml)：
 
-实际部署前，合并后的当前配置与正式模板都通过了同一 HA 镜像的原生检查。随后定向重载 MQTT 与自动化，关闭这三项的统计并执行一次初始清理，没有重启容器。核查清除了 22,269 条过期环境状态；固定内侧时间段记录的数量与 ID 汇总未变，其他旧实体状态与统计的有界数量/ID 汇总也未变。这是范围与保留检查，不是逐字节历史内容校验。
+- **仅针对三个高频环境实体**：
+  - `sensor.xiaoxi_node01_temperature`
+  - `sensor.xiaoxi_node01_humidity`
+  - `sensor.xiaoxi_node01_light`
+- **每 5 分钟自动清理**：HA 自动化在启动时及每 5 分钟调用一次 `recorder.purge_entities`（`keep_days: 1`），仅清理上述 3 个实体 24 小时前的历史状态，不影响其它实体或 Hermes 对话数据库。
+- **不生成冗余长期统计表**：上述 3 个实体省略了 `state_class: measurement`，避免 HA Recorder 额外写入每小时/每日的永久统计汇总表（`statistics` / `statistics_short_term`）。
 
-## 读取、质量与输出
+---
 
-[报告入口](../analytics/src/recorder_report.py)通过 SQLite `mode=ro`、`query_only=ON`、单次事务快照、执行时限与 100,000 行上限读取三个实体，不导出原始行或任意属性。属性 JSON 大小、重复键和非有限数均受限制；只有所需字段进入估计逻辑。
+## 3. 样本清洗与一维因果卡尔曼滤波算法
 
-[纯函数](../analytics/src/environment.py)同时约束 HA 状态更新时间和 `received_at` 的窗口，检查 `simulated=false`、固定实体、node01 boot、sequence、单位、数值范围和接收/写入时间差。模板可能没有 `node_id`，代码不会伪造已观测到的字段；若存在则必须匹配 node01。以上检查是当前资料的质量规则，不等于硬件身份认证或参考仪器校准。
+实现源码位于 [analytics/src/environment.py](../analytics/src/environment.py)，由纯函数 `summarize_history()` 与 `CausalKalman1D` 组成。
 
-每个通道独立按 boot/sequence 去重；乱序、回退、旧 boot 和不合格记录不重复更新状态。缺测/不可用记录、boot 切换或超过 35 秒的间断重置滤波。最新状态无效或接收年龄达到 35 秒时，`current_estimate` 为 `null`，不把过去的平滑值说成现在。
+### 3.1 严格样本筛选与去重规则
+在进入统计与滤波前，读取器对 24 小时窗口（严格按 `start = end - 86_400` 秒计算，不受夏令时跳变影响）内的原始记录执行四步过滤：
+1. **状态与数值校验**：剔除 `unavailable`、`unknown`、非有限浮点数及超出物理量程的记录。
+2. **真实硬件与单位校验**：仅保留属性中 `simulated is False`、包含合法 `boot_id` 与非负整数 `sequence`、且单位匹配（`°C`、`%`）的真实样本。
+3. **主键去重**：同一 `(boot_id, sequence)` 若被 HA 重复记录，仅保留首次观测点。
+4. **断流与重启分段（Segment Reset）**：当相邻有效样本的时间差 $\Delta t > 35\text{ s}$（超过传感器过期阈值）或 `boot_id` 发生切换时，记录一次间断（`gap_count` / `boot_resets`）并重置卡尔曼滤波器状态。
 
-输出包含窗口、有效记录数、原值最小/最大/均值、拒绝原因、间断与重置计数、最近观测及有条件可用的当前估计。不会用计划采样数推断未验证的完整覆盖率。实际只读验收中每通道有 4,974 条满足规则的记录，也存在间断和被拒绝项；这不代表完整连续的一天。
+### 3.2 标量随机游走卡尔曼滤波模型
+对每个连续采样段内的第 $k$ 个观测值 $z_k$（时间间隔 $\Delta t_k = \max(t_k - t_{k-1},\; 10^{-3})\text{ s}$）：
 
-HA 的 `received_at` 是接收时间，状态写入/变更时间也不是设备精确测量时刻。validator 的持久状态只是防重放水位，不能当作历史库。[data](../data/README.md)中的契约样例仍是模拟数据，本轮没有新增第二份常驻原始归档。
+1. **段首初始化（$k = 0$）**：
+   $$\hat{x}_0 = z_0,\quad P_0 = r$$
+2. **一步预测（Predict）**：
+   $$\hat{x}_k^- = \hat{x}_{k-1},\quad P_k^- = P_{k-1} + q \cdot \Delta t_k$$
+3. **测量更新（Update）**：
+   $$K_k = \frac{P_k^-}{P_k^- + r},\quad \hat{x}_k = \hat{x}_k^- + K_k (z_k - \hat{x}_k^-),\quad P_k = (1 - K_k) P_k^-$$
 
-## 卡尔曼模型
+默认参数配置（`DEFAULT_SPECS`）：
+- **温度（`temperature`）**：过程噪声功率谱密度 $q = 10^{-4}\text{ °C}^2/\text{s}$，测量噪声方差 $r = 0.04\text{ °C}^2$（对应标准差 $0.2\text{ °C}$）。
+- **相对湿度（`humidity`）**：$q = 2.5 \times 10^{-3}\text{ \%}^2/\text{s}$，$r = 0.25\text{ \%}^2$（对应标准差 $0.5\%$）。
+- **相对光照（`light`）**：$q = 10^{-6}\text{ s}^{-1}$，$r = 10^{-4}$。
 
-对三个通道分别使用一维随机游走：
+当窗口末端最新样本距评估时刻不超过 35 秒（`fresh: true`）时，报告输出当前滤波平滑值 `smoothed_current_state` 与最新原始值 `raw_current_state`；若最新样本已超过 35 秒，则自动将当前估计置为 `null`，避免输出过期状态。
 
-```text
-状态：x(k) = x(k-1) + w(k)
-测量：y(k) = x(k) + v(k)
-预测：x_pred = x_prev
-      P_pred = P_prev + q * dt
-更新：K = P_pred / (P_pred + r)
-      x_new = x_pred + K * (y - x_pred)
-      P_new = (1 - K) * P_pred
+---
+
+## 4. 命令行运行与输出示例
+
+[analytics/src/recorder_report.py](../analytics/src/recorder_report.py) 使用 SQLite 只读快照模式读取 HA 数据库，不会阻塞正在运行的 Home Assistant 容器：
+
+```bash
+source .venv/bin/activate
+
+# 分析默认路径 deploy/runtime/home-assistant/home-assistant_v2.db
+python -m analytics.src.recorder_report
+
+# 或显式指定数据库路径与窗口小时数
+python -m analytics.src.recorder_report \
+  --db deploy/runtime/home-assistant/home-assistant_v2.db \
+  --window-hours 24
 ```
-
-首个有效值初始化状态，`P=r`；`dt` 取实际 HA 接收时间差。温度使用 `q=0.0001/s, r=0.04`，湿度 `q=0.0025/s, r=0.25`，亮度 `q=0.000001/s, r=0.0001`。这些是未标定的教学默认值，没有根据用户历史声称已优化。各通道方差单位不同；不能机械套同一参数。
-
-滤波不能校准传感器、修复接线或还原缺失信息。相对亮度经过平滑仍不是 lux；曲线更平滑不证明更接近真实值。模型输出的方差只是算法状态方差，不能包装成经过校准的置信区间。
-
-这个模型的未来均值等于当前状态估计，随时距增加的是不确定度。当前实现交付的是平滑当前估计，不是“十分钟后升到多少”的趋势预测。
-
-## 后续趋势与课程评价
-
-确需趋势时，再评估状态 `[水平, 变化速率]` 和实际 `dt`：
-
-```text
-F(dt) = [[1, dt],
-         [0,  1]]
-```
-
-门窗、空调、人员活动等外部变化未进入模型时，简单外推可能失效。预测时距、训练截止和不确定度需要明确，未经验证的模型不触发设备控制。
-
-- 按时间划分调参与测试窗口或使用滚动预测原点；Q/R 只能根据截止之前的数据选取，不能随机打散泄漏未来信息。
-- 平滑对照原值、移动均值和 EWMA，报告阶跃滞后、缺测恢复和参数敏感性。有参考仪器才评价真实量准确度。
-- 预测至少比较保持最近值与 EWMA，报告预设时距的 MAE/RMSE、可用比例和区间覆盖率；未来传感器读数作目标不等于仪器校准精度。
-- 分开报告 boot、间断和模拟/实测条件，不用大量平稳区间掩盖变化时误差。
-
-若以后让 Hermes 回答历史或预测，需单独增加固定实体、有限窗口、摘要字段和访问控制的接口，再做实际验收；不直接放开全量 HA 历史或数据库。当前命令行使用和 23 个合成测试见[分析说明](../analytics/README.md)。
