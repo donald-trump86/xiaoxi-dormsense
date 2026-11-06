@@ -1,4 +1,4 @@
-"""Authenticated fixed learning API; deliberately contains no IR send endpoint."""
+"""Authenticated fixed learning and single-attempt snapshot control APIs."""
 import argparse
 import hmac
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -9,7 +9,8 @@ import signal
 import stat
 import threading
 
-from .model import BUTTONS, LearningSession
+from .control import ERRORS as CONTROL_ERRORS, IRControl, _unknown
+from .model import BUTTONS, ID, LearningSession
 from .transport import LearningTransport, strict_json
 
 ACTIONS = {"start", "next", "status", "confirm", "skip", "cancel"}
@@ -18,7 +19,7 @@ ERRORS = {"unsupported_button", "session_not_started", "capture_already_active",
           "explicit_label_confirmation_required", "button_mismatch", "invalid_request"}
 
 
-def handler_for(session, token):
+def handler_for(session, token, *, control=None):
     class Handler(BaseHTTPRequestHandler):
         server_version = "XiaoxiLearning/1"
         sys_version = ""
@@ -47,8 +48,39 @@ def handler_for(session, token):
             else:
                 self.answer(404, {"ok": False, "error": "not_found"})
 
+        def control_action(self, request):
+            action = request.get("action")
+            if action == "list":
+                if set(request) - {"action", "profile_id"}:
+                    raise ValueError("invalid_request")
+                if "profile_id" in request:
+                    value = request["profile_id"]
+                    if not isinstance(value, str) or not ID.fullmatch(value):
+                        raise ValueError("invalid_identifier")
+                try:
+                    result = (control.catalog(request["profile_id"]) if "profile_id" in request
+                              else control.catalog())
+                except Exception:
+                    return self.answer(503, {"ok": False, "error": "control_unavailable"})
+            elif action == "send":
+                if set(request) != {"action", "profile_id", "record_id", "command_id", "confirm_once"}:
+                    raise ValueError("invalid_request")
+                for field in ("profile_id", "record_id", "command_id"):
+                    if not isinstance(request[field], str) or not ID.fullmatch(request[field]):
+                        raise ValueError("invalid_identifier")
+                if request["confirm_once"] is not True:
+                    raise ValueError("confirmation_required")
+                try:
+                    result = control.send(request["profile_id"], request["record_id"],
+                                          request["command_id"], confirm_once=True)
+                except Exception:
+                    return self.answer(503, _unknown(request["command_id"], "control_unavailable"))
+            else:
+                raise ValueError("invalid_request")
+            self.answer(200, result)
+
         def do_POST(self):
-            if self.path != "/api/learning":
+            if self.path != "/api/learning" and not (self.path == "/api/control" and control is not None):
                 return self.answer(404, {"ok": False, "error": "not_found"})
             authorizations = self.headers.get_all("Authorization", [])
             if len(authorizations) != 1 or not hmac.compare_digest(authorizations[0], "Bearer " + token):
@@ -68,7 +100,11 @@ def handler_for(session, token):
                 if len(payload) != length:
                     raise ValueError("invalid_request")
                 request = strict_json(payload)
-                if not isinstance(request, dict) or set(request) - {"action", "button", "label", "confirm", "reason"}:
+                if not isinstance(request, dict):
+                    raise ValueError("invalid_request")
+                if self.path == "/api/control":
+                    return self.control_action(request)
+                if set(request) - {"action", "button", "label", "confirm", "reason"}:
                     raise ValueError("invalid_request")
                 action = request.get("action")
                 if not isinstance(action, str) or action not in ACTIONS:
@@ -105,7 +141,8 @@ def handler_for(session, token):
                     result = session.cancel()
                 self.answer(200, result)
             except (ValueError, TypeError, KeyError, UnicodeDecodeError) as error:
-                code = str(error) if isinstance(error, ValueError) and str(error) in ERRORS else "invalid_request"
+                allowed_errors = CONTROL_ERRORS | {"invalid_request"} if self.path == "/api/control" else ERRORS
+                code = str(error) if isinstance(error, ValueError) and str(error) in allowed_errors else "invalid_request"
                 body = {"ok": False, "error": code}
                 if code == "baseline_required":
                     body["prompt"] = "上次状态不确定，请先录制baseline，之后再录本键。"
@@ -133,7 +170,7 @@ def main():
     session = LearningSession(config["state_dir"], transport, expected_rawlen=config.get("expected_rawlen", 280))
     transport.on_capture = session.receive
     transport.on_expire = session.expire
-    server = HTTPServer(("0.0.0.0", 8090), handler_for(session, token))
+    server = HTTPServer(("0.0.0.0", 8090), handler_for(session, token, control=IRControl(session, args.config)))
     def stop(signum, frame):
         threading.Thread(target=server.shutdown, daemon=True).start()
     signal.signal(signal.SIGTERM, stop)

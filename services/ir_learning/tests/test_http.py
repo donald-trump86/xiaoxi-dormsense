@@ -1,10 +1,10 @@
-import http.client
-from http.server import HTTPServer
+import io
 import json
 from pathlib import Path
 import sys
-import threading
+from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 from services.ir_learning.server import handler_for
@@ -40,29 +40,44 @@ class FakeSession:
         return self.public()
 
 
+class MemoryConnection:
+    """Exercise the real HTTP parser without binding a socket."""
+    def __init__(self, request):
+        self.input = io.BytesIO(request)
+        self.output = io.BytesIO()
+
+    def makefile(self, *args):
+        return self.input
+
+    def sendall(self, data):
+        self.output.write(data)
+
+    def settimeout(self, seconds):
+        pass
+
+
 class HttpBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.session = FakeSession()
-        self.token = "test-only-credential-not-a-runtime-secret"
-        self.server = HTTPServer(("127.0.0.1", 0), handler_for(self.session, self.token))
-        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": .01}, daemon=True)
-        self.thread.start()
+        self.token = "offline-test-token-only"
+        self.control = None
 
-    def tearDown(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=1)
-
-    def request(self, body, *, path="/api/learning", token=None, method="POST"):
-        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=2)
-        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + (self.token if token is None else token)}
-        payload = json.dumps(body) if not isinstance(body, str) else body
-        try:
-            connection.request(method, path, payload, headers)
-            response = connection.getresponse()
-            return response.status, json.loads(response.read(16384))
-        finally:
-            connection.close()
+    def request(self, body, *, path="/api/learning", token=None, method="POST", headers=None):
+        payload = (json.dumps(body) if not isinstance(body, str) else body).encode()
+        fields = [("Content-Type", "application/json"),
+                  ("Authorization", "Bearer " + (self.token if token is None else token)),
+                  ("Content-Length", str(len(payload))), *(headers or [])]
+        request = (f"{method} {path} HTTP/1.1\r\n" +
+                   "".join(f"{key}: {value}\r\n" for key, value in fields) + "\r\n").encode() + payload
+        connection = MemoryConnection(request)
+        kwargs = {"control": self.control} if self.control is not None else {}
+        with patch("socket.socket", side_effect=AssertionError("network_forbidden")):
+            handler_for(self.session, self.token, **kwargs)(
+                connection, ("127.0.0.1", 0),
+                SimpleNamespace(server_name="offline", server_port=0),
+            )
+        header, response = connection.output.getvalue().split(b"\r\n\r\n", 1)
+        return int(header.split()[1]), json.loads(response)
 
     def test_authentication_precedes_session_action(self):
         status, body = self.request({"action": "start"}, token="wrong")
@@ -113,6 +128,110 @@ class HttpBoundaryTests(unittest.TestCase):
         body = self.request({"action": "confirm", "button": "power", "confirm": True})[1]
         self.assertEqual("button_mismatch", body["error"])
         self.assertEqual([], self.session.calls)
+
+
+class ControlHttpBoundaryTests(HttpBoundaryTests):
+    def setUp(self):
+        super().setUp()
+        self.control = SimpleNamespace(
+            catalog=Mock(return_value={"ok": True, "profiles": [], "commands": [],
+                                       "command_id": "c" * 32}),
+            send=Mock(return_value={"ok": True, "command_id": "c" * 32,
+                                    "outcome": "node_acknowledged", "attempt_consumed": True,
+                                    "appliance_response_verified": False}),
+        )
+        self.send_request = {"action": "send", "profile_id": "a" * 32,
+                             "record_id": "b" * 32, "command_id": "c" * 32,
+                             "confirm_once": True}
+
+    def control_request(self, body, **kwargs):
+        return self.request(body, path="/api/control", **kwargs)
+
+    def test_control_authentication_precedes_every_action(self):
+        for body in ({"action": "list"}, self.send_request):
+            self.assertEqual(401, self.control_request(body, token="wrong")[0])
+            self.assertEqual(401, self.control_request(body, headers=[("Authorization", "Bearer " + self.token)])[0])
+        self.control.catalog.assert_not_called()
+        self.control.send.assert_not_called()
+
+    def test_list_uses_only_optional_profile_identifier(self):
+        status, body = self.control_request({"action": "list"})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"])
+        self.control.catalog.assert_called_once_with()
+        self.control.catalog.reset_mock()
+        self.assertTrue(self.control_request({"action": "list", "profile_id": "d" * 32})[1]["ok"])
+        self.control.catalog.assert_called_once_with("d" * 32)
+        self.assertEqual(self.session.calls, [])
+
+    def test_send_passes_exact_arguments_and_preserves_unknown_result(self):
+        self.control.send.return_value.update(ok=False, outcome="unknown_no_retry")
+        status, body = self.control_request(self.send_request)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["outcome"], "unknown_no_retry")
+        self.assertTrue(body["attempt_consumed"])
+        self.assertFalse(body["appliance_response_verified"])
+        self.control.send.assert_called_once_with("a" * 32, "b" * 32, "c" * 32,
+                                                  confirm_once=True)
+        self.assertEqual(self.session.calls, [])
+
+    def test_control_rejects_action_specific_extra_fields_before_send(self):
+        for base in ({"action": "list"}, self.send_request):
+            for key, value in (("topic", "anything"), ("url", "http://offline.invalid"),
+                               ("path", "/private"), ("timings_us", [500]),
+                               ("capture", {}), ("frequency_khz", 38), ("confirm", True)):
+                with self.subTest(action=base["action"], key=key):
+                    body = dict(base, **{key: value})
+                    self.assertEqual(self.control_request(body)[1]["error"], "invalid_request")
+        self.assertEqual(self.control_request({"action": "list", "confirm_once": True})[1]["error"],
+                         "invalid_request")
+        self.control.catalog.assert_not_called()
+        self.control.send.assert_not_called()
+
+    def test_control_requires_all_send_fields_and_literal_true(self):
+        for key in ("profile_id", "record_id", "command_id", "confirm_once"):
+            body = dict(self.send_request)
+            body.pop(key)
+            self.assertEqual(self.control_request(body)[1]["error"], "invalid_request")
+        for value in (False, None, 1, "true"):
+            body = dict(self.send_request, confirm_once=value)
+            self.assertEqual(self.control_request(body)[1]["error"], "confirmation_required")
+        self.control.send.assert_not_called()
+
+    def test_control_validates_ids_and_fixed_route(self):
+        for key in ("profile_id", "record_id", "command_id"):
+            for value in ("../escape", "A" * 32, None, True, {}):
+                with self.subTest(key=key, value=value):
+                    body = dict(self.send_request, **{key: value})
+                    self.assertEqual(self.control_request(body)[1]["error"], "invalid_identifier")
+        self.assertEqual(self.control_request({"action": "list", "profile_id": None})[1]["error"],
+                         "invalid_identifier")
+        self.assertEqual(self.request({"action": "list"}, path="/api/control?profile_id=anything")[0], 404)
+        self.assertEqual(self.control_request({}, method="GET")[0], 404)
+        self.control.catalog.assert_not_called()
+        self.control.send.assert_not_called()
+
+    def test_control_reuses_duplicate_body_size_and_encoding_guards(self):
+        for payload in ('{"action":"list","action":"send"}', " " * 2049,
+                        '{"action":"list","profile_id":"a","profile_id":"b"}'):
+            self.assertEqual(self.control_request(payload)[1]["error"], "invalid_request")
+        for headers in ([('Transfer-Encoding', 'chunked')], [('Content-Encoding', 'gzip')],
+                        [('Content-Length', '2')]):
+            self.assertEqual(self.control_request({"action": "list"}, headers=headers)[1]["error"],
+                             "invalid_request")
+        self.control.catalog.assert_not_called()
+        self.control.send.assert_not_called()
+
+    def test_control_unexpected_exception_never_reflects_private_input(self):
+        self.control.send.side_effect = RuntimeError("FAKE_PRIVATE_ERROR_PATH")
+        status, body = self.control_request(self.send_request)
+        self.assertEqual(status, 503)
+        self.assertEqual(body["error"], "control_unavailable")
+        self.assertEqual(body["command_id"], "c" * 32)
+        self.assertEqual(body["outcome"], "unknown_no_retry")
+        self.assertTrue(body["attempt_consumed"])
+        self.assertFalse(body["appliance_response_verified"])
+        self.assertNotIn("FAKE_PRIVATE", json.dumps(body))
 
 
 if __name__ == "__main__":
