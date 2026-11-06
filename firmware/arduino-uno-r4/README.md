@@ -22,10 +22,10 @@
 ## 2. 本地测试、编译与烧录
 
 ```bash
-# 1. 复制本地私钥配置模板（首次初始化）
+# 1. 复制本地连接配置模板（首次初始化，填写后再编译）
 cp firmware/arduino-uno-r4/include/secrets.example.h firmware/arduino-uno-r4/include/secrets.h
 
-# 2. 在宿主机运行 34 项 PlatformIO native 单元测试（无需连接开发板）
+# 2. 在宿主机运行 39 项 PlatformIO native 单元测试（无需连接开发板）
 pio test -d firmware/arduino-uno-r4 -e native
 
 # 3. 交叉编译 UNO R4 WiFi 固件镜像

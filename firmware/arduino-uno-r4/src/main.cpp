@@ -356,6 +356,12 @@ void poll_button(uint32_t now) {
         voice_mode_until = now + 10000UL;
         update_companion_matrix(now);
         publish_button_event("button_long_press_voice", detail);
+    } else if (g == xiaoxi::led::BUTTON_GESTURE_LONG_RELEASE) {
+        Serial.print("button_gesture=long_release ");
+        Serial.println(detail);
+        voice_mode_until = 0;
+        update_companion_matrix(now);
+        publish_button_event("button_long_release_voice", detail);
     }
 }
 

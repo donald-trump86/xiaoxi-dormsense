@@ -244,7 +244,114 @@ static void test_led_companion_scenes_and_pixel_packing() {
     TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 1040));
     TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_PRESS, tracker.update(0x3Bu, 1750));
     TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1800));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1829));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_RELEASE, tracker.update(0x3Fu, 1830));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1830));
     TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 2300));
+}
+
+static void test_button_long_hold_does_not_rebaseline() {
+    using namespace xiaoxi::led;
+    ButtonGestureTracker tracker;
+    tracker.init(0x3Fu);
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 100));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 130));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_PRESS, tracker.update(0x3Bu, 830));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 4100));
+    TEST_ASSERT_EQUAL_HEX8(0x3Fu, tracker.baseline_mask);
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 12000));
+    TEST_ASSERT_EQUAL_HEX8(0x3Fu, tracker.baseline_mask);
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 12100));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_RELEASE, tracker.update(0x3Fu, 12130));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 12510));
+}
+
+static void test_button_long_release_bounce_and_next_press() {
+    using namespace xiaoxi::led;
+    ButtonGestureTracker tracker;
+    tracker.init(0x3Fu);
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 100));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 130));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_PRESS, tracker.update(0x3Bu, 830));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 900));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 910));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 940));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 950));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 979));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_RELEASE, tracker.update(0x3Fu, 980));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 980));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 990));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1000));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1030));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 1050));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 1080));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1150));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1180));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1559));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_SINGLE_PRESS, tracker.update(0x3Fu, 1560));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 2000));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 2100));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 2130));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_PRESS, tracker.update(0x3Bu, 2830));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 2900));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_RELEASE, tracker.update(0x3Fu, 2930));
+}
+
+static void test_button_single_and_double_press() {
+    using namespace xiaoxi::led;
+    ButtonGestureTracker tracker;
+    tracker.init(0x3Fu);
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 100));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 130));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 200));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 230));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 609));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_SINGLE_PRESS, tracker.update(0x3Fu, 610));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 700));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 730));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 800));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 830));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 900));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 930));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1000));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_DOUBLE_PRESS, tracker.update(0x3Fu, 1030));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1030));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, 1500));
+}
+
+static void test_button_initialization_and_idle_rebaseline() {
+    using namespace xiaoxi::led;
+    ButtonGestureTracker tracker;
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 0));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, 5000));
+    TEST_ASSERT_EQUAL_HEX8(0x3Bu, tracker.baseline_mask);
+    tracker.init(0x3Fu);
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 100));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 4099));
+    TEST_ASSERT_EQUAL_HEX8(0x3Fu, tracker.baseline_mask);
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 4100));
+    TEST_ASSERT_EQUAL_HEX8(0x3Eu, tracker.baseline_mask);
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 9000));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Cu, 10000));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Cu, 10030));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_PRESS, tracker.update(0x3Cu, 10730));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Eu, 10800));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_RELEASE, tracker.update(0x3Eu, 10830));
+}
+
+static void test_button_long_release_across_clock_wrap() {
+    using namespace xiaoxi::led;
+    ButtonGestureTracker tracker;
+    const uint32_t start = UINT32_MAX - 300U;
+    tracker.init(0x3Fu, start);
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, start + 100U));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, start + 130U));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Bu, start + 829U));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_PRESS, tracker.update(0x3Bu, start + 830U));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, start + 900U));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, start + 929U));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_LONG_RELEASE, tracker.update(0x3Fu, start + 930U));
+    TEST_ASSERT_EQUAL_UINT8(BUTTON_GESTURE_NONE, tracker.update(0x3Fu, start + 1400U));
 }
 
 int main() {
@@ -255,6 +362,11 @@ int main() {
     RUN_TEST(test_backoff_is_bounded);
     RUN_TEST(test_ldr_adc_normalization_bounds);
     RUN_TEST(test_led_companion_scenes_and_pixel_packing);
+    RUN_TEST(test_button_long_hold_does_not_rebaseline);
+    RUN_TEST(test_button_long_release_bounce_and_next_press);
+    RUN_TEST(test_button_single_and_double_press);
+    RUN_TEST(test_button_initialization_and_idle_rebaseline);
+    RUN_TEST(test_button_long_release_across_clock_wrap);
     RUN_TEST(test_fragmented_crlf_and_exact_expiry);
     RUN_TEST(test_multiple_frames_negative_temperature_and_humidity_limits);
     RUN_TEST(test_invalid_frames_never_become_fresh);

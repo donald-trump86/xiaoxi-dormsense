@@ -111,7 +111,8 @@ Broker 登记的遗嘱消息（LWT）固定为：`{"schema_version":"1.0","node_
 - **`node01`（按钮手势事件）**
   - `button_single_press`：单击按钮，切换板载 12×8 LED 点阵显示场景。
   - `button_double_press`：双击按钮，网页端可联动发起温湿度光照播报。
-  - `button_long_press_voice`：长按按钮（≥ 700 ms），点阵屏进入 10 秒声波跳动动画，网页端可联动开启语音收音。
+  - `button_long_press_voice`：长按按钮（≥ 700 ms），点阵屏进入声波跳动动画（最长 10 秒），网页端开启语音收音。
+  - `button_long_release_voice`：长按后松开按钮（30 ms 消抖），点阵屏退出声波动画；网页端停止这次实体按钮录音，完成语音识别后自动发送。持续按住超过 4 秒仍保留长按状态。
 - **`node02`（红外诊断与学习事件）**
   - `ir_remote_captured`：普通模式下捕获到红外帧（`detail` 含 `proto=`、`bits=`、`rawlen=`、`code=` 及 `ac=` 摘要）。
   - `ir_raw_timing`：原始微秒脉冲分包数据（每包最多 16 项时长，最高保留 300 项，供 `nec_timing.py` 或 `ir-learning` 组包还原完整波形）：

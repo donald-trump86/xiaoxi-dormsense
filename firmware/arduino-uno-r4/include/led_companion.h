@@ -24,7 +24,8 @@ enum ButtonGesture : uint8_t {
   BUTTON_GESTURE_NONE = 0,
   BUTTON_GESTURE_SINGLE_PRESS = 1,
   BUTTON_GESTURE_DOUBLE_PRESS = 2,
-  BUTTON_GESTURE_LONG_PRESS = 3
+  BUTTON_GESTURE_LONG_PRESS = 3,
+  BUTTON_GESTURE_LONG_RELEASE = 4
 };
 
 struct ButtonGestureTracker {
@@ -67,10 +68,10 @@ struct ButtonGestureTracker {
     if (current_mask != last_seen_mask) {
       last_seen_mask = current_mask;
       mask_stable_since_ms = now_ms;
-    } else if (current_mask != baseline_mask &&
+    } else if (!long_fired && current_mask != baseline_mask &&
                (now_ms - mask_stable_since_ms) >= kAutoRebaselineMs) {
-      // If a new steady-state mask persists for >= 4s (e.g. hot-plugged wire
-      // or resistor divider settling), adopt it as the new resting baseline.
+      // Adopt a new steady mask after >= 4s (e.g. hot-plugged wire or divider
+      // settling), but preserve the resting baseline during a recognized long press.
       init(current_mask, now_ms);
       return BUTTON_GESTURE_NONE;
     }
@@ -99,6 +100,9 @@ struct ButtonGestureTracker {
             pending_clicks = 0;
             return BUTTON_GESTURE_DOUBLE_PRESS;
           }
+        } else {
+          long_fired = false;
+          return BUTTON_GESTURE_LONG_RELEASE;
         }
       }
     }

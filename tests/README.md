@@ -41,7 +41,7 @@ python -m unittest discover -s services/ir_learning/tests -p 'test_*.py' -v
 python -m unittest discover -s firmware/esp32-c3-ir/test -p 'test_*.py' -v
 python -m unittest discover -s hermes/tests -p 'test_ir_learning_plugin.py' -v
 
-# 7. PlatformIO 固件 native 单元测试（UNO 34 项 + C3 13 项）
+# 7. PlatformIO 固件 native 单元测试（UNO 39 项 + C3 13 项）
 pio test -d firmware/arduino-uno-r4 -e native
 pio test -d firmware/esp32-c3-ir -e native
 

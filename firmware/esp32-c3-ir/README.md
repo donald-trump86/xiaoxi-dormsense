@@ -10,7 +10,7 @@
 
 | 文件路径 | 模块职责与实现说明 |
 | --- | --- |
-| [include/ir_node_logic.h](include/ir_node_logic.h) | 基础命令参数校验、11 种开源空调协议映射与 최근 8 个 `command_id` 的环形缓冲去重 |
+| [include/ir_node_logic.h](include/ir_node_logic.h) | 基础命令参数校验、13 种开源空调协议映射与最近 8 个 `command_id` 的环形缓冲去重 |
 | [include/ir_raw_timing.h](include/ir_raw_timing.h) | 将 `IRrecv` 捕获的 `2 μs` tick 数组转换为每包最多 16 项、最高 300 项的 `ir_raw_timing` 微秒分包文本 |
 | [include/ir_learning.h](include/ir_learning.h) | `learn1` 五类动作（`ir_status`、`ir_learn_start`、`ir_learn_cancel`、`ir_raw_prepare`、`ir_raw_commit`）严格 JSON 校验、单调时钟 `deadline_ms` 检查与 10 秒一次性挑战码状态机 |
 | [include/ir_learning_capture.h](include/ir_learning_capture.h) | 将 `IRGreeAC` / `IRKelvinatorAC` 解码结果归一化为 14 个标准空调状态字段（`power, mode, temp_c, fan, swingv, swingh, light, turbo, econo, clean, sleep, filter, quiet, ifeel`），对不支持的字段保留 `null` |
@@ -24,7 +24,7 @@
 工程提供两套互补的自动化测试：**PlatformIO native 测试**（测试纯头文件逻辑）与**宿主机 Python+C++ 联合测试**（直接编译链接 `IRremoteESP8266` 源码验证真实编解码与回放流程）：
 
 ```bash
-# 1. 复制本地私钥配置模板（首次初始化）
+# 1. 复制本地连接配置模板（首次初始化，填写后再编译）
 cp firmware/esp32-c3-ir/include/secrets.example.h firmware/esp32-c3-ir/include/secrets.h
 
 # 2. 运行 13 项 PlatformIO native 单元测试
@@ -34,7 +34,7 @@ pio test -d firmware/esp32-c3-ir -e native
 source .venv/bin/activate
 python -m unittest discover -s firmware/esp32-c3-ir/test -p 'test_*.py' -v
 
-# 4. 编译 ESP32-C3 固件镜像（依赖固定为 IRremoteESP8266@2.9.0、PubSubClient@2.8.0、ArduinoJson@7.2.1）
+# 4. 编译 ESP32-C3 固件镜像（依赖固定为 IRremoteESP8266@2.9.0、PubSubClient@2.8.0、ArduinoJson@6.21.5）
 pio run -d firmware/esp32-c3-ir -e esp32c3
 
 # 5. 连接 ESP32-C3 后烧录固件
