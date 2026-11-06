@@ -48,6 +48,7 @@
 | 历史统计与卡尔曼滤波 | `python -m unittest discover -s analytics/tests -p 'test_*.py' -v` | 校验 24h 滑动窗口统计、断流重置、夏令时边界与 SQLite 只读报表 |
 | 红外学习与回放服务 | `python -m unittest discover -s services/ir_learning/tests -p 'test_*.py' -v` | 校验 `learn1` 分包组装、14 字段前后比对、HTTP 接口与两阶段挑战码回放 |
 | Hermes 红外插件 | `python -m unittest discover -s hermes/tests -p 'test_ir_learning_plugin.py' -v` | 校验插件工具参数校验、动作白名单与错误处理 |
+| Hermes 天气插件 | `python -m unittest discover -s hermes/tests -p 'test_weather_plugin.py' -v` | 校验动态城市、指定城市、数据过期、边界与错误处理，全程使用模拟响应 |
 | UNO R4 WiFi 固件 | `pio test -d firmware/arduino-uno-r4 -e native` | 在宿主机本地运行 SHT31 分帧、光敏归一化、点阵与按钮状态机测试 |
 | ESP32-C3 红外固件 | `pio test -d firmware/esp32-c3-ir -e native` 及 `python -m unittest discover -s firmware/esp32-c3-ir/test -p 'test_*.py' -v` | 运行 C3 纯逻辑 native 测试与链接 `IRremoteESP8266` 源码的主机回归测试 |
-| Hermes 完整补丁套件 | `python hermes/tests/run_offline.py` | 在无网络隔离容器中重放 16 文件补丁并执行 Python 与前端 AST 回归测试 |
+| Hermes 完整补丁套件 | `python hermes/tests/run_offline.py` | 在无网络隔离容器中重放 17 文件补丁并执行 Python 与前端 AST 回归测试 |

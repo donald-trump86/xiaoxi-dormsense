@@ -41,17 +41,17 @@
 ## 核心工程特性
 
 1. **双板协同与边缘交互**
-   - **感知陪伴节点（`node01`，Arduino UNO R4 WiFi）**：解析 SHT31 串口帧并采样 LM393 光照，解决 RA4M1 芯片 A0 ADC 与板载 12×8 LED 点阵的寄存器锁冲突；点阵屏以 6 秒/幕无闪烁轮播笑脸、温湿度、光照与暗光睡眠 `Zzz` 动画，并支持三线按钮单击切换、双击查询、长按语音手势。
+   - **感知陪伴节点（`node01`，Arduino UNO R4 WiFi）**：解析 SHT31 串口帧并采样 LM393 光照，解决 RA4M1 芯片 A0 ADC 与板载 12×8 LED 点阵的寄存器锁冲突；点阵屏以 6 秒/幕无闪烁轮播笑脸、温湿度、光照与暗光睡眠 `Zzz` 动画，并支持三线按钮单击切换、双击查询、长按开始录音、松开结束并发送的语音手势。
    - **红外学习节点（`node02`，ESP32-C3）**：支持原装格力空调遥控器 280 边沿双段长帧的原始微秒脉冲采集（`learn1` 协议最高 300 项）、14 字段标准状态比对与一次性挑战码（Challenge-Commit）安全回放；两块开发板可通过 `5V/GND` 单 USB 线串联供电。
 2. **零信任网络隔离与最小权限边界**
    - 容器层划分为后端设备网段（`backend`）与智能体内部网段（`agent: internal`）。
    - `read-gateway` 将 Home Assistant 高权限 Token 封存在网关侧，仅向智能体暴露 5 个固定实体的 `GET` 接口（温度、湿度、光照、按钮事件、红外事件），物理阻断越权写操作。
-   - `inference-egress` 代理仅放行推理与语音合成所需的 5 个固定 HTTPS 域名。
+   - `inference-egress` 代理仅放行推理、语音合成、城市定位与天气查询所需的 7 个固定 HTTPS 域名。
 3. **24 小时滚动数据治理与一维因果卡尔曼滤波**
    - Home Assistant 自动化每 5 分钟清理 24 小时前的环境历史状态，控制数据库体积。
    - `analytics/` 模块直接以只读方式分析 SQLite 历史库，在严格校验元数据与 35 秒断流重初始化的基础上，对温湿度与光照执行一维随机游走因果卡尔曼滤波平滑估计。
 4. **交小西自然语言、语音与日常记忆**
-   - 基于固定摘要的上游 Hermes 镜像，通过可复现的 16 文件精确补丁（`hermes/patches/hermes.patch`）集成 Faster-Whisper 本地语音识别、Edge TTS 小西声线播报、网页日常单会话自动延续、红外逐键学习原生插件（`xiaoxi_ir_learning`）及全套交小西品牌 UI。
+   - 基于固定摘要的上游 Hermes 镜像，通过可复现的 17 文件精确补丁（`hermes/patches/hermes.patch`）集成 Faster-Whisper 本地语音识别、Edge TTS 小西声线播报、网页日常单会话自动延续、红外逐键学习原生插件（`xiaoxi_ir_learning`）、动态城市天气实况插件（`xiaoxi_weather`）及全套交小西品牌 UI。中文朗读保留负数与范围，实体按钮松开后自动结束收音并转写发送。
 
 ---
 
@@ -69,12 +69,13 @@
 | [docs/development.md](docs/development.md) | 本地开发环境搭建、模块扩展方法与代码提交流程 |
 | [docs/experiments.md](docs/experiments.md) | 五大核心课程实验设计（端到端感知、断线恢复、滤波清洗、安全隔离、红外学习） |
 | [docs/commit-guide.md](docs/commit-guide.md) | 按功能拆分的细粒度 Git 提交学习索引，适合按提交顺序研读代码演进 |
-| [firmware/arduino-uno-r4/](firmware/arduino-uno-r4/README.md) | `node01` 感知与 LED 点阵陪伴固件及 34 项 PlatformIO native 单元测试 |
+| [firmware/](firmware/README.md) | 正式固件统一入口、本地配置边界与离线验证命令 |
+| [firmware/arduino-uno-r4/](firmware/arduino-uno-r4/README.md) | `node01` 感知与 LED 点阵陪伴固件及 39 项 PlatformIO native 单元测试 |
 | [firmware/esp32-c3-ir/](firmware/esp32-c3-ir/README.md) | `node02` 红外学习/回放固件、脉冲时序分析器与主机/native 测试套件 |
 | [services/bridge/](services/bridge/README.md) | 常驻验证器、五实体只读网关、HTTPS 出口白名单代理与 9119 入口转发服务 |
 | [services/ir_learning/](services/ir_learning/README.md) | 宿主机红外逐键学习会话服务、防呆比对模型与单次挑战码回放 CLI |
 | [analytics/](analytics/README.md) | 24h 环境历史统计、一维因果卡尔曼滤波器与 HA SQLite 只读报表工具 |
-| [hermes/](hermes/README.md) | Hermes 镜像构建配方、16 文件源码补丁、红外学习插件、语音锁文件与品牌模板 |
+| [hermes/](hermes/README.md) | Hermes 镜像构建配方、17 文件源码补丁、红外学习插件、语音锁文件与品牌模板 |
 | [home-assistant/](home-assistant/README.md) | Home Assistant 真实节点配置、事件实体模板与 24h 滚动保留自动化 |
 | [deploy/](deploy/README.md) | Docker Compose 编排文件、运行时镜像 Dockerfile 与配置模板 |
 | [simulator/](simulator/README.md) | 无需硬件即可生成合规遥测流的 Python 离线/本地模拟器（`node90`） |
@@ -100,7 +101,7 @@ python -m unittest discover -s tests -p 'test_*.py' -v
 python -m unittest discover -s services/bridge/tests -p 'test_*.py' -v
 python -m unittest discover -s analytics/tests -p 'test_*.py' -v
 python -m unittest discover -s services/ir_learning/tests -p 'test_*.py' -v
-python -m unittest discover -s hermes/tests -p 'test_ir_learning_plugin.py' -v
+python -m unittest discover -s hermes/tests -p 'test_*plugin.py' -v
 
 # 3. 预览离线模拟遥测消息
 python simulator/mqtt_node.py --count 3

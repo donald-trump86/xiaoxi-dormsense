@@ -1,6 +1,6 @@
 # Git 提交历史学习与二次开发索引
 
-为了让小组成员与后续学习者能够按**模块依赖顺序**循序渐进地阅读代码，仓库在 `feat/reproducible-baseline-and-day-history` 分支上将工程实现拆分为 **28 个细粒度、原子化的提交**。
+本索引按**模块依赖顺序**整理 `feat/reproducible-baseline-and-day-history` 分支上的工程提交，便于小组成员与后续学习者逐步阅读代码。每个条目说明实现内容和源码入口，新增功能继续在对应模块的正式目录维护。
 
 建议按照下表从上到下的顺序，结合 `git show <SHA>` 逐个模块研读：
 
@@ -53,11 +53,21 @@
 | 27 | [a422044744](https://github.com/donald-trump86/xiaoxi-dormsense/commit/a42204474476047068f299b57f6c4914f8f4042b) `docs(git): append IR learning, daily session, and branding commits to study guide` | 将第 21–26 步提交补充至本索引。 | [commit-guide.md](commit-guide.md) |
 | 28 | [7ac052ee6d](https://github.com/donald-trump86/xiaoxi-dormsense/commit/7ac052ee6d72b01db96e9bb8a438237d32bcd4ce) `docs(core): rewrite root, architecture, deployment, and protocol guides for clarity` | 重写根目录与 `docs/` 下全部核心架构、硬件、协议、部署与开发指南，去除防御性免责声明，突出技术实现与复现流程。 | [README.md](../README.md)、[AGENTS.md](../AGENTS.md)、[architecture.md](architecture.md) |
 | 29 | [a1dd231c13](https://github.com/donald-trump86/xiaoxi-dormsense/commit/a1dd231c13d568f990edcf40a5fe7d7f370250b9) `docs(modules): rewrite module READMEs, persona guides, and remove defensive phrasing` | 重写各子模块 README、Hermes 工作区规则与代码注释，统一为自然清晰的技术说明风格。 | [hermes/README.md](../hermes/README.md)、[firmware/esp32-c3-ir/README.md](../firmware/esp32-c3-ir/README.md)、[services/ir_learning/README.md](../services/ir_learning/README.md) |
-| 30 | 本次提交 `docs(git): update commit study guide with documentation rewrite commits` | 将第 28–29 步文档与表述重写提交记录至本学习索引。 | [commit-guide.md](commit-guide.md) |
+| 30 | [efaf7dc869](https://github.com/donald-trump86/xiaoxi-dormsense/commit/efaf7dc869409fdcc3a1deb424834dc569ab3cfc) `docs(git): update commit study guide with documentation rewrite commits` | 将第 28–29 步文档与表述重写提交记录至本学习索引。 | [commit-guide.md](commit-guide.md) |
 
 ---
 
-## 4. 常用 Git 研读命令
+## 4. 正式固件入口、语音交互与动态城市天气（第 31–33 步）
+
+| 序号 | 提交 SHA 与主题 | 核心设计思路与学习要点 | 关键文件入口 |
+| --- | --- | --- | --- |
+| 31 | [846308415b](https://github.com/donald-trump86/xiaoxi-dormsense/commit/846308415b59cdc48f52874b8e19b679d9105f1b) `fix(firmware): preserve long holds and publish voice release events` | 明确两块板的正式固件入口；长按期间保留按钮基线，松开后发出结束录音事件，并增加 5 项 native 回归测试。 | [固件入口](../firmware/README.md)、[led_companion.h](../firmware/arduino-uno-r4/include/led_companion.h)、[协议说明](mqtt-protocol.md) |
+| 32 | [e284ea5e0d](https://github.com/donald-trump86/xiaoxi-dormsense/commit/e284ea5e0d4742f0207874d36e1e82bc2a00a59e) `feat(hermes): add push-to-talk, Chinese speech, and dynamic weather` | 处理松开即停止并转写发送、中文单位朗读与自然对话；天气查询每次动态识别城市，使用受限出口读取国内实况；同步像素横幅及真实音色标签。 | [精确补丁](../hermes/patches/hermes.patch)、[天气插件](../hermes/plugins/xiaoxi_weather/README.md)、[出口代理](../services/bridge/inference_egress.py) |
+| 33 | 本次提交 `docs: align formal firmware, speech, and weather guides` | 更新正式目录导航、依赖版本、测试入口、天气与语音用法，并补全第 31–32 步的实际提交号。 | [README](../README.md)、[工程基线](engineering-baseline.md)、[日常使用](hermes-daily-use.md) |
+
+---
+
+## 5. 常用 Git 研读命令
 
 ```bash
 # 查看全部分支提交图谱

@@ -37,14 +37,14 @@ python -m unittest discover -s analytics/tests -p 'test_*.py' -v
 # 5. 宿主机红外学习与挑战码回放测试（52 项）
 python -m unittest discover -s services/ir_learning/tests -p 'test_*.py' -v
 
-# 6. ESP32-C3 固件主机测试（22 项）与 Hermes 插件测试（14 项）
+# 6. ESP32-C3 固件主机测试（22 项）与 Hermes 插件测试（14 项红外 + 21 项天气）
 python -m unittest discover -s firmware/esp32-c3-ir/test -p 'test_*.py' -v
-python -m unittest discover -s hermes/tests -p 'test_ir_learning_plugin.py' -v
+python -m unittest discover -s hermes/tests -p 'test_*plugin.py' -v
 
 # 7. PlatformIO 固件 native 单元测试（UNO 39 项 + C3 13 项）
 pio test -d firmware/arduino-uno-r4 -e native
 pio test -d firmware/esp32-c3-ir -e native
 
-# 8. Hermes 16 文件补丁与前端 AST 离线回归测试（需本地 Docker 含上游基础镜像）
+# 8. Hermes 17 文件补丁与前端 AST 离线回归测试（需本地 Docker 含上游基础镜像）
 python hermes/tests/run_offline.py
 ```

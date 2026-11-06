@@ -62,7 +62,7 @@
 ┌─────────────────────────────────────┐   ┌──────────────────────────────────┐
 │ [inference-egress] (egress-outbound)│   │ [dashboard-ingress] (宿主机 9119)│
 │  • 仅放行 DeepSeek / Edge TTS 等    │   │  • 将宿主机 127.0.0.1:9119 转发  │
-│    5 个固定 HTTPS 域名:443          │   │    至内部网段的 hermes:9119      │
+│    7 个固定 HTTPS 域名:443          │   │    至内部网段的 hermes:9119      │
 └─────────────────────────────────────┘   └──────────────────────────────────┘
 ```
 
@@ -80,7 +80,7 @@
 | `read-gateway` | `backend` + `agent` | `10001:10001`（只读根文件系统，`cap_drop: ALL`） | 持有 HA 后端 Token，向 `agent` 网段仅暴露 5 个白名单实体的只读 `GET /api/states` 接口，拒绝一切 `POST` 服务调用 |
 | `ir-learning` | `backend` + `agent` | `10001:10001`（只读根文件系统，独立 `/state` 卷） | 连接 `node02` 与 Hermes 学习插件，管理 45 秒按键采样窗口、14 字段状态防呆比对与本地受控回放 |
 | `hermes` | `agent`（`internal: true`） | 容器内部服务 + `/opt/data` 持久卷 | 运行交小西对话引擎、Faster-Whisper 语音转写、Edge TTS 语音合成与 9119 Web UI，无直接外网路由 |
-| `inference-egress` | `agent` + `egress-outbound` | `10001:10001`（只读根文件系统，`cap_drop: ALL`） | 为 `hermes` 提供 HTTP `CONNECT` 代理，仅放行推理与语音合成所需的 5 个固定 HTTPS 域名 |
+| `inference-egress` | `agent` + `egress-outbound` | `10001:10001`（只读根文件系统，`cap_drop: ALL`） | 为 `hermes` 提供 HTTP `CONNECT` 代理，仅放行推理、语音合成、城市定位与天气查询所需的 7 个固定 HTTPS 域名 |
 | `dashboard-ingress` | `agent` + `dashboard-ingress` | `10001:10001`（只读根文件系统，`cap_drop: ALL`） | 由于 Docker `internal` 网络不直接映射宿主机端口，负责将宿主机 `9119` 安全转发至 `hermes:9119` |
 
 ---
