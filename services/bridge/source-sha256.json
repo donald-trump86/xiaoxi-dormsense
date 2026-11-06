@@ -1,5 +1,5 @@
 {
-  "services/bridge/validator.py": "439d7ea93d3fed154bfac524b4f0bee1b1057d4ffb6badf182783be4a985c66c",
+  "services/bridge/validator.py": "8914148a6e201ad8afd683f44f821d3262b80365a0e2a9a5d153f6c86223ccac",
   "services/bridge/read_gateway.py": "d3b28e373c504fbaea4a573941f8dab957b2d52328e28ef75fbf44a9c9cb7804",
   "services/bridge/inference_egress.py": "3ddeda6f3821d6a48f79ae09250bae4a8d8500198f7dcf3f12caec015510c747",
   "services/bridge/dashboard_ingress.py": "17906a1cea09de8b011c2769201c8dab483f4bb3514683311accc3792469de73",

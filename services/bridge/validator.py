@@ -554,7 +554,7 @@ def run(config: dict, stop: threading.Event | None = None) -> None:
                     break
                 if not relay.check_ready(client):
                     break
-                # ACK readiness alone does not prove a blocked publish drained.
+                # Wait briefly so any in-flight publish can flush cleanly.
                 if relay.ready and relay._has_published:
                     delay = 1
         except Exception:

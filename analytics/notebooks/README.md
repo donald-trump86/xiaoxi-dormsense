@@ -1,5 +1,5 @@
-# 探索性分析（Planned）
+# 交互式分析笔记本目录（`analytics/notebooks`）
 
-此处用于课程统计、时间序列与可视化 Notebook，目前没有实际数据或结果。Notebook 必须标注数据来源（模拟/真实）、预处理、时间范围、单位、随机种子和运行环境。
+本目录预留用于存放课程实验过程中的 Jupyter Notebook 探索脚本（如温湿度日内变化曲线绘制、卡尔曼滤波参数 $q/r$ 对比可视化等）。
 
-可复用逻辑放在 `analytics/src/`，提交前清理可能含私密数据的输出并从头运行验证。不提交宿舍人员、行为轨迹、Token 或未经授权的数据截图。
+核心生产级滤波与统计逻辑已封装为标准 Python 模块，位于 [../src/environment.py](../src/environment.py) 与 [../src/recorder_report.py](../src/recorder_report.py)。

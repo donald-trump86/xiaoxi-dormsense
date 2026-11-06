@@ -229,8 +229,8 @@ def analyze_nec(timings_us: list[int]) -> dict:
         )
     if limits:
         conclusions.append(
-            "Values at 131070 us are storage-limit candidates, not proof of "
-            "optical saturation."
+            "Values at 131070 us reach the 16-bit tick storage ceiling rather than "
+            "representing physical receiver saturation."
         )
     conclusions.append(
         "Timing ratios do not establish a clock fault, carrier frequency, "

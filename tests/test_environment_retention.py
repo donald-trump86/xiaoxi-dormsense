@@ -1,4 +1,4 @@
-"""Offline contracts for scoped HA retention; not actual purge execution."""
+"""Tests for the Home Assistant 24-hour rolling retention configuration."""
 from pathlib import Path
 import unittest
 

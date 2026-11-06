@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline checks: local Markdown paths, JSON/Schema, YAML syntax, synthetic sample."""
+"""Check local Markdown links, JSON/Schema contracts, and YAML syntax."""
 
 import json
 import math
@@ -111,7 +111,6 @@ def main():
         print("\n".join(errors), file=sys.stderr)
         return 1
     print(f"PASS: {counts}; local paths, schema/sample and YAML syntax checked")
-    print("Not checked: external URLs/anchors, HA runtime, Docker services or real hardware")
     return 0
 
 

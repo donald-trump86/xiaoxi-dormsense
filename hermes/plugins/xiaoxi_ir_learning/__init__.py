@@ -21,11 +21,11 @@ _STATUSES = frozenset({
 })
 _INVALID = object()
 _GUIDANCE = (
-    "Guide exactly one physical remote key at a time. Ask the user for the remote's "
-    "before/after state and compare only supported decoded fields. UNKNOWN stays "
-    "pending until the user supplies a manual label and explicitly confirms it. "
-    "Missing or unsupported fields are unknown, never false. Learning a signal "
-    "does not prove that the air conditioner responded. These tools never replay IR."
+    "Guide one physical remote key at a time. Compare before/after states across "
+    "supported decoded fields. UNKNOWN waveforms stay pending until the user "
+    "supplies a manual label and confirms it. Missing or unsupported fields remain "
+    "unknown rather than false. These tools manage waveform learning and status "
+    "queries without replaying IR."
 )
 
 

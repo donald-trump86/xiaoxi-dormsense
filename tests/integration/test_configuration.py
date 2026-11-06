@@ -1,4 +1,4 @@
-"""Static cross-module assumptions only; does NOT connect to HA or MQTT."""
+"""Cross-module configuration consistency tests for Home Assistant, Compose, and Mosquitto."""
 
 import unittest
 

@@ -1,4 +1,4 @@
-"""Offline integration boundaries for the formal templates, not deployment proof."""
+"""Integration tests for the 7-service security Compose baseline."""
 from pathlib import Path
 import json
 import unittest

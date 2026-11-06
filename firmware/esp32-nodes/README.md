@@ -1,5 +1,6 @@
-# ESP32 节点（可选 / Planned）
+# 固件节点目录导览
 
-当前未确认额外 ESP32 已购买，不作为 MVP 前提，不提供猜测的引脚或驱动。
+项目的两套正式微控制器固件按芯片平台分目录存放：
 
-增加节点前先确认预算、具体板型与传感器、电源、无线网络及独立 node_id；遵守同一 [MQTT 契约](../../docs/mqtt-protocol.md)，不要为 ESP32 新建不兼容协议。多节点软件测试可先用不同 ID 的[模拟器](../../simulator/README.md)，但不能作为多实物节点实验结果。
+- **感知陪伴节点（`node01`）**：[../arduino-uno-r4/README.md](../arduino-uno-r4/README.md)（Arduino UNO R4 WiFi，负责 SHT31 串口温湿度、LM393 光照、三线按钮手势与 12×8 LED 点阵动画）。
+- **红外学习与回放节点（`node02`）**：[../esp32-c3-ir/README.md](../esp32-c3-ir/README.md)（ESP32-C3，负责空调遥控器 280 边沿长帧原始脉冲学习、14 字段状态比对与挑战码单次回放）。
