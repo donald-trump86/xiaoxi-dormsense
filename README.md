@@ -51,7 +51,7 @@
    - Home Assistant 自动化每 5 分钟清理 24 小时前的环境历史状态，控制数据库体积。
    - `analytics/` 模块直接以只读方式分析 SQLite 历史库，在严格校验元数据与 35 秒断流重初始化的基础上，对温湿度与光照执行一维随机游走因果卡尔曼滤波平滑估计。
 4. **交小西自然语言、语音与日常记忆**
-   - 基于固定摘要的上游 Hermes 镜像，通过可复现的 17 文件精确补丁（`hermes/patches/hermes.patch`）集成 Faster-Whisper 本地语音识别、Edge TTS 小西声线播报、网页日常单会话自动延续、红外逐键学习原生插件（`xiaoxi_ir_learning`）、动态城市天气实况插件（`xiaoxi_weather`）及全套交小西品牌 UI。中文朗读保留负数与范围，实体按钮松开后自动结束收音并转写发送。
+   - 基于固定摘要的上游 Hermes 镜像，通过可复现的 17 文件精确补丁（`hermes/patches/hermes.patch`）集成 Faster-Whisper 本地语音识别、Edge TTS 小西声线播报、网页日常单会话自动延续、红外学习与单次发射原生插件（`xiaoxi_ir_learning`）、动态城市天气实况插件（`xiaoxi_weather`）及全套交小西品牌 UI。中文朗读保留负数与范围，实体按钮松开后自动结束收音并转写发送。
 
 ---
 
@@ -73,7 +73,7 @@
 | [firmware/arduino-uno-r4/](firmware/arduino-uno-r4/README.md) | `node01` 感知与 LED 点阵陪伴固件及 39 项 PlatformIO native 单元测试 |
 | [firmware/esp32-c3-ir/](firmware/esp32-c3-ir/README.md) | `node02` 红外学习/回放固件、脉冲时序分析器与主机/native 测试套件 |
 | [services/bridge/](services/bridge/README.md) | 常驻验证器、五实体只读网关、HTTPS 出口白名单代理与 9119 入口转发服务 |
-| [services/ir_learning/](services/ir_learning/README.md) | 宿主机红外逐键学习会话服务、防呆比对模型与单次挑战码回放 CLI |
+| [services/ir_learning/](services/ir_learning/README.md) | 遥控器逐键学习、完整状态样本目录与 HTTP / CLI 共用的挑战码单次发射 |
 | [analytics/](analytics/README.md) | 24h 环境历史统计、一维因果卡尔曼滤波器与 HA SQLite 只读报表工具 |
 | [hermes/](hermes/README.md) | Hermes 镜像构建配方、17 文件源码补丁、红外学习插件、语音锁文件与品牌模板 |
 | [home-assistant/](home-assistant/README.md) | Home Assistant 真实节点配置、事件实体模板与 24h 滚动保留自动化 |

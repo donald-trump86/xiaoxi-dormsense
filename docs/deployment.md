@@ -94,5 +94,5 @@ docker compose --env-file deploy/.env.secure \
 | `http://127.0.0.1:9119` | `dashboard-ingress` → `hermes` | 交小西 Web 对话、语音交互与状态面板 |
 | `tls://<局域网IP>:8883` | `mosquitto` | 供 UNO R4 WiFi（`node01`）与 ESP32-C3（`node02`）接入的加密 MQTT 端口 |
 | `http://read-gateway:8080` | `read-gateway`（仅容器内网） | 仅允许 `GET` 读取 5 个白名单传感器实体的只读网关 |
-| `http://ir-learning:8090` | `ir-learning`（仅容器内网） | 供 `xiaoxi_ir_learning` 插件调用的空调按键学习服务 |
+| `http://ir-learning:8090` | `ir-learning`（仅容器内网） | 供 `xiaoxi_ir_learning` 插件调用的按键学习、样本查询与单次发射服务 |
 | `http://inference-egress:3128` | `inference-egress`（仅容器内网） | 供 `hermes` 访问 DeepSeek 与 Edge TTS 的域名白名单代理 |

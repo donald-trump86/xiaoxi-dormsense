@@ -34,10 +34,10 @@ python -m unittest discover -s services/bridge/tests -p 'test_*.py' -v
 # 4. 24h 统计与一维因果卡尔曼滤波测试（23 项）
 python -m unittest discover -s analytics/tests -p 'test_*.py' -v
 
-# 5. 宿主机红外学习与挑战码回放测试（52 项）
+# 5. 红外学习、样本目录与单次发射测试（92 项）
 python -m unittest discover -s services/ir_learning/tests -p 'test_*.py' -v
 
-# 6. ESP32-C3 固件主机测试（22 项）与 Hermes 插件测试（14 项红外 + 21 项天气）
+# 6. ESP32-C3 固件主机测试（22 项）与 Hermes 插件测试（31 项红外 + 21 项天气）
 python -m unittest discover -s firmware/esp32-c3-ir/test -p 'test_*.py' -v
 python -m unittest discover -s hermes/tests -p 'test_*plugin.py' -v
 

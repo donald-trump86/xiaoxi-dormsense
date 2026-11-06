@@ -57,14 +57,16 @@
 
 ---
 
-## 4. 正式固件入口、语音交互与动态城市天气（第 31–34 步）
+## 4. 正式目录、语音天气与受控红外工具（第 31–36 步）
 
 | 序号 | 提交 SHA 与主题 | 核心设计思路与学习要点 | 关键文件入口 |
 | --- | --- | --- | --- |
 | 31 | [846308415b](https://github.com/donald-trump86/xiaoxi-dormsense/commit/846308415b59cdc48f52874b8e19b679d9105f1b) `fix(firmware): preserve long holds and publish voice release events` | 明确两块板的正式固件入口；长按期间保留按钮基线，松开后发出结束录音事件，并增加 5 项 native 回归测试。 | [固件入口](../firmware/README.md)、[led_companion.h](../firmware/arduino-uno-r4/include/led_companion.h)、[协议说明](mqtt-protocol.md) |
 | 32 | [e284ea5e0d](https://github.com/donald-trump86/xiaoxi-dormsense/commit/e284ea5e0d4742f0207874d36e1e82bc2a00a59e) `feat(hermes): add push-to-talk, Chinese speech, and dynamic weather` | 处理松开即停止并转写发送、中文单位朗读与自然对话；天气查询每次动态识别城市，使用受限出口读取国内实况；同步像素横幅及真实音色标签。 | [精确补丁](../hermes/patches/hermes.patch)、[天气插件](../hermes/plugins/xiaoxi_weather/README.md)、[出口代理](../services/bridge/inference_egress.py) |
 | 33 | [`a955845`](https://github.com/donald-trump86/xiaoxi-dormsense/commit/a9558453ea342b7d80b084c6cac0a03ff6d10807) `docs: align formal firmware, speech, and weather guides` | 更新正式目录导航、依赖版本、测试入口、天气与语音用法，并补全第 31–32 步的实际提交号。 | [README](../README.md)、[工程基线](engineering-baseline.md)、[日常使用](hermes-daily-use.md) |
-| 34 | 本次提交 `fix(hermes): interrupt speech on new chat input` | 把终端输入与语音提交接到现有停止播放逻辑，输入草稿、录音和转写期间抑制自动朗读；覆盖云端、系统朗读和迟到合成回调。 | [Hermes 说明](../hermes/README.md)、[播放回归](../hermes/tests/test_voice_playback.cjs) |
+| 34 | [b7ce4f0036](https://github.com/donald-trump86/xiaoxi-dormsense/commit/b7ce4f0036e59995f9d1f7f41624cd8eda3daddf) `fix(hermes): interrupt speech on new chat input` | 把终端输入与语音提交接到现有停止播放逻辑，输入草稿、录音和转写期间抑制自动朗读；覆盖云端、系统朗读和迟到合成回调。 | [Hermes 说明](../hermes/README.md)、[播放回归](../hermes/tests/test_voice_playback.cjs) |
+| 35 | [fd7e9b1c9a](https://github.com/donald-trump86/xiaoxi-dormsense/commit/fd7e9b1c9ab0d4a8a5a10aa3372b2d2a821153a9) `feat(ir): expose authenticated one-shot control API` | 增加受鉴权的私有样本目录与单次发射接口；与学习窗口互斥，复用原挑战码和防重放日志，丢回执不自动重发。 | [control.py](../services/ir_learning/control.py)、[HTTP 服务](../services/ir_learning/server.py)、[控制回归](../services/ir_learning/tests/test_control.py) |
+| 36 | 本次提交 `feat(hermes): add controlled AC command selection and sending` | 在原三个学习工具旁接入查询与发射；按完整状态选择样本，保留未知结果和已消耗编号，更新运行规则与构建入口。 | [红外插件](../hermes/plugins/xiaoxi_ir_learning/README.md)、[工具回归](../hermes/tests/test_ir_learning_plugin.py)、[日常使用](hermes-daily-use.md) |
 
 ---
 

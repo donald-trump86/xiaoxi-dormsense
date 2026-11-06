@@ -1,12 +1,14 @@
 {
   "manifest_version": 1,
   "name": "xiaoxi_ir_learning",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "kind": "standalone",
-  "description": "Restricted, human-guided IR remote learning; no IR replay.",
+  "description": "Restricted IR remote learning, saved command catalog and controlled single-attempt replay.",
   "provides_tools": [
     "xiaoxi_ac_initialize",
     "xiaoxi_ac_learn_key",
-    "xiaoxi_ac_learning_status"
+    "xiaoxi_ac_learning_status",
+    "xiaoxi_ac_list_commands",
+    "xiaoxi_ac_send"
   ]
 }

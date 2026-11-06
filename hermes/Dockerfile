@@ -7,6 +7,7 @@ COPY workspace/AGENTS.md /opt/xiaoxi/workspace/AGENTS.md
 COPY skins/xiaoxi.yaml /opt/xiaoxi/skins/xiaoxi.yaml
 # The native loader discovers bundled plugins here, outside the data volume.
 COPY --chown=hermes:hermes plugins/xiaoxi_weather/ /opt/hermes/plugins/xiaoxi_weather/
+COPY --chown=hermes:hermes plugins/xiaoxi_ir_learning/ /opt/hermes/plugins/xiaoxi_ir_learning/
 COPY branding/xiaoxi-logo.png branding/xiaoxi-login.png branding/apple-touch-icon.png /opt/hermes/web/public/ds-assets/
 COPY branding/favicon.ico /opt/hermes/web/public/favicon.ico
 

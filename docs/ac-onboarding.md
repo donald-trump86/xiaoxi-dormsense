@@ -27,7 +27,7 @@
 
 - **节点固件**：[firmware/esp32-c3-ir/](../firmware/esp32-c3-ir/README.md)（启动默认保持静默接收，不自动发射任何红外帧）。
 - **主机学习服务**：[services/ir_learning/](../services/ir_learning/README.md)（管理活跃会话、前后状态比对、私有 `0700` 存储与回放 CLI）。
-- **Hermes 原生插件**：[hermes/plugins/xiaoxi_ir_learning/](../hermes/plugins/xiaoxi_ir_learning/README.md)（提供 `xiaoxi_ac_initialize`、`xiaoxi_ac_learn_key`、`xiaoxi_ac_learning_status` 三个对话工具）。
+- **Hermes 原生插件**：[hermes/plugins/xiaoxi_ir_learning/](../hermes/plugins/xiaoxi_ir_learning/README.md)（三个学习工具，以及 `xiaoxi_ac_list_commands`、`xiaoxi_ac_send` 两个样本查询与发射工具）。
 
 ### 2.1 推荐录制的按键顺序
 
@@ -52,7 +52,7 @@
 
 ## 3. 原始波形安全回放（Challenge-Commit）
 
-为避免大模型在普通对话中误触发空调，对话插件仅开放**学习与状态查询**接口；真实红外发射通过独立的受控 CLI [services/ir_learning/replay.py](../services/ir_learning/replay.py) 执行两阶段握手：
+用户明确要求控制空调时，小西先查询样本目录，核对完整目标状态，再用 `xiaoxi_ac_send` 发射一次。服务端固定样本与目标节点，拒绝学习窗口内发送，并与本地 CLI 共用 [replay.py](../services/ir_learning/replay.py) 的持久化操作日志和两阶段握手：
 
 1. **预装载阶段（`ir_raw_prepare`）**：主机校验证书、节点在线状态与 `boot_id` 后，将目标记录的 `timings_us`（去掉首项 `2 μs` 哨兵值后的奇数个正整数时长，38kHz 载波）发送给 ESP32-C3，节点在 RAM 中暂存波形并返回 10 秒有效期的随机 32 位十六进制 `challenge`。
 2. **确认发射阶段（`ir_raw_commit`）**：主机在写入本地专属防重放意图日志后，携带 `challenge` 请求节点发射一次原始波形，发射期间自动暂停接收中断，确保波形干净完整。

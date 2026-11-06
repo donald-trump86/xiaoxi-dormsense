@@ -13,7 +13,7 @@
 | [requirements-voice.lock](requirements-voice.lock) | 包含全部 35 个 wheel 包 `--hash=sha256:...` 的语音与简繁转换依赖锁文件（`edge-tts==7.2.7`、`faster-whisper==1.2.1`、`ctranslate2==4.7.1`、`zhconv==1.4.3`） |
 | [check_voice_dependencies.py](check_voice_dependencies.py) | 校验语音依赖锁文件完整性与容器环境 `pip check` 兼容性的脚本 |
 | [config.dorm-assistant.yaml](config.dorm-assistant.yaml) | 面向宿舍日常使用的精简配置模板（开启 `homeassistant`、`xiaoxi_ir_learning`、`xiaoxi_weather`、`memory`、`session_search`，关闭冗余平台与会话自动清理，默认使用 `xiaoxi` 皮肤） |
-| [plugins/xiaoxi_ir_learning/](plugins/xiaoxi_ir_learning/README.md) | 原生红外逐键学习插件，提供 `xiaoxi_ac_initialize`、`xiaoxi_ac_learn_key`、`xiaoxi_ac_learning_status` 三个对话工具 |
+| [plugins/xiaoxi_ir_learning/](plugins/xiaoxi_ir_learning/README.md) | 原生红外学习与单次发射插件：三个学习工具，加上 `xiaoxi_ac_list_commands` 和 `xiaoxi_ac_send`；按完整状态选择已存样本，经挑战码握手发射一次 |
 | [plugins/xiaoxi_weather/](plugins/xiaoxi_weather/README.md) | 自编的只读气象实况插件，未指定城市时每次按当前网络出口定位，再查询中国气象局实况；显式城市可覆盖定位 |
 | [skins/xiaoxi.yaml](skins/xiaoxi.yaml) | 终端命令行专属 `xiaoxi` 像素字横幅与配色皮肤模板 |
 | [branding/](branding/README.md) | 网页端与浏览器标签页使用的交小西圆形徽标、登录页插画与 Favicon 资源 |
