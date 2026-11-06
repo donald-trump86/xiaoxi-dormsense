@@ -1,0 +1,15 @@
+{
+  "method": "Node vm executing delivered HTML with a minimal DOM adapter",
+  "checks": [
+    "20-page navigation and bounds",
+    "nine manual states render 96 source pixels",
+    "pause and step behavior",
+    "LED controls fit within available slide height",
+    "notes open and close",
+    "exception panels preserve labelled states",
+    "Home and End keyboard navigation",
+    "reduced-motion starts paused"
+  ],
+  "passed": true,
+  "real_browser_verified": false
+}

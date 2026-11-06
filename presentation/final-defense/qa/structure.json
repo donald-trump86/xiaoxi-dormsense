@@ -1,0 +1,21 @@
+{
+  "slides": 20,
+  "main_slides": 18,
+  "main_seconds": 855,
+  "speaker_notes": "all 20 match content metadata",
+  "source_references": "all local paths exist; comparison URL recorded",
+  "geometry_issues": 0,
+  "duplicate_zip_entries": [],
+  "pptx_external_relationships": 0,
+  "template_layouts": 7,
+  "template_masters": 1,
+  "budget": 57.64,
+  "team_members": 6,
+  "led_states": 9,
+  "gif_duration_seconds": 30.0,
+  "gif_embedded": true,
+  "led_matches_current_header": true,
+  "external_asset_urls": 0,
+  "template_sha256": "fb2fe79e8ab436e42f19f5c6543d009c9a06d9ea428ccad63e6d96d3c0fdbf5e",
+  "defensive_phrase_scan": "passed"
+}
