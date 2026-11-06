@@ -1,7 +1,7 @@
 {
   "services/bridge/validator.py": "8914148a6e201ad8afd683f44f821d3262b80365a0e2a9a5d153f6c86223ccac",
   "services/bridge/read_gateway.py": "d3b28e373c504fbaea4a573941f8dab957b2d52328e28ef75fbf44a9c9cb7804",
-  "services/bridge/inference_egress.py": "3ddeda6f3821d6a48f79ae09250bae4a8d8500198f7dcf3f12caec015510c747",
+  "services/bridge/inference_egress.py": "beb0eed21efe55eb54123e46c9fea41da2594bba26e832a73b27843e2d0d06d0",
   "services/bridge/dashboard_ingress.py": "17906a1cea09de8b011c2769201c8dab483f4bb3514683311accc3792469de73",
   "services/bridge/tests/test_validator.py": "f002e720291eb7f7d9e301add29ebacfbacc840e4e0be637d2875679a78d9437",
   "services/bridge/tests/test_read_gateway.py": "2534b148e25d18c59daf294ddf6c8208cda81d994639da08e1e1497713b010b1",

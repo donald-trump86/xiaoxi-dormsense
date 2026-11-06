@@ -28,6 +28,8 @@ jobs:
         run: python -m unittest discover -s services/bridge/tests -p 'test_*.py'
       - name: Run bounded history and estimation tests with synthetic fixtures
         run: python -m unittest discover -s analytics/tests -p 'test_*.py'
+      - name: Run native Hermes plugins with offline fixtures
+        run: python -m unittest discover -s hermes/tests -p 'test_*plugin.py'
       - name: Validate legacy Compose structure without starting services
         run: docker compose -f deploy/compose.yaml config --quiet
       - name: Validate standalone formal Compose with public placeholders

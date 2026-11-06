@@ -18,6 +18,7 @@ import time
 ALLOWED_HOSTS = frozenset({
     "inference-api.nousresearch.com", "portal.nousresearch.com",
     "api.deepseek.com", "speech.platform.bing.com", "api.msedgeservices.com",
+    "weather.cma.cn", "whois.pconline.com.cn",
 })
 MAX_CONNECTIONS = 16
 MAX_DNS_RESULTS = 16

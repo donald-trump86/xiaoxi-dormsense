@@ -16,6 +16,7 @@ SOURCE_PATHS = (
     "hermes_cli/web_routers/audio.py",
     "tools/tts_tool.py",
     "tools/tts_tool_providers.py",
+    "tools/tts_text_normalize.py",
     "tools/transcription_local.py",
     "web/src/components/ChatSidebar.tsx",
     "web/src/pages/ChatPage.tsx",

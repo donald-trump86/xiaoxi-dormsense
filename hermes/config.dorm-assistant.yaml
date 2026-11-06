@@ -1,14 +1,14 @@
 # Merge through Hermes' official configuration API; do not replace an existing profile.
 # Secrets, provider routing, voice settings and all old conversations stay separate.
 plugins:
-  enabled: [xiaoxi_ir_learning]
+  enabled: [xiaoxi_ir_learning, xiaoxi_weather]
   disabled: [a2a-platform, spotify]
 # HA state-query tools use REST; its separate WebSocket messaging adapter is unused.
 platforms:
   homeassistant:
     enabled: false
 platform_toolsets:
-  cli: [homeassistant, xiaoxi_ir_learning, memory, session_search]
+  cli: [homeassistant, xiaoxi_ir_learning, xiaoxi_weather, memory, session_search]
 kanban:
   notify_in_gateway: false
   dispatch_in_gateway: false

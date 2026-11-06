@@ -1,0 +1,8 @@
+{
+  "manifest_version": 1,
+  "name": "xiaoxi_weather",
+  "version": "0.1.0",
+  "kind": "standalone",
+  "description": "Read-only current China-city observations with fresh city-level network IP location.",
+  "provides_tools": ["xiaoxi_get_weather"]
+}

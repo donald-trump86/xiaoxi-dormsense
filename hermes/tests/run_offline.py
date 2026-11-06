@@ -26,9 +26,12 @@ INPUTS = (
     "patches/manifest.json",
     "tests/test_voice_patch.py",
     "tests/test_transcription_normalization.py",
+    "tests/test_spoken_text_normalization.py",
     "tests/test_patch_guard.py",
     "tests/test_voice_playback.cjs",
+    "tests/test_voice_input.cjs",
     "tests/test_chat_continuation.cjs",
+    "tests/test_banner.cjs",
 )
 FIXTURE_PROGRAM = r'''
 import importlib.util
@@ -72,10 +75,14 @@ if not payload["frontend_only"]:
         raise SystemExit(1)
 sidebar = (sources / "web/src/components/ChatSidebar.tsx").read_text(encoding="utf-8")
 page = (sources / "web/src/pages/ChatPage.tsx").read_text(encoding="utf-8")
-for name in ("test_voice_playback.cjs", "test_chat_continuation.cjs"):
+branding = (sources / "ui-tui/src/components/branding.tsx").read_text(encoding="utf-8")
+banner = Path("/opt/hermes/ui-tui/src/banner.ts").read_text(encoding="utf-8")
+for name in ("test_voice_playback.cjs", "test_voice_input.cjs", "test_chat_continuation.cjs", "test_banner.cjs"):
     tests = (base / "tests" / name).read_text(encoding="utf-8")
     script = "globalThis.__sidebarSource = " + json.dumps(sidebar) + ";\n"
-    script += "globalThis.__chatPageSource = " + json.dumps(page) + ";\n" + tests
+    script += "globalThis.__chatPageSource = " + json.dumps(page) + ";\n"
+    script += "globalThis.__brandingSource = " + json.dumps(branding) + ";\n"
+    script += "globalThis.__bannerSource = " + json.dumps(banner) + ";\n" + tests
     result = subprocess.run(["node", "-"], input=script, text=True, cwd="/opt/hermes/web", timeout=30, check=False)
     if result.returncode:
         raise SystemExit(result.returncode)

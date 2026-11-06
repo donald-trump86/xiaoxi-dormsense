@@ -186,6 +186,92 @@
      return output_path
  
  
+--- a/tools/tts_text_normalize.py
++++ b/tools/tts_text_normalize.py
+@@ -88,25 +88,60 @@
+     return text
+ 
+ 
++def _normalize_chinese_units_for_tts(text: str) -> str:
++    """Keep numeric weather values intact while giving Chinese voices Chinese units."""
++    number = r"([-+]?(?:\d+(?:\.\d+)?|\.\d+))"
++    start = r"(?<![\d.])"
++
++    def spoken_number(value: str) -> str:
++        return value.replace("-", "\u8d1f").replace("+", "\u6b63")
++
++    for unit, word, prefix in (
++        (r"[%\uff05]", "\u767e\u5206\u4e4b", True),
++        (r"(?:\u2103|\u00b0\s*C)(?![A-Za-z])", "\u6444\u6c0f\u5ea6", False),
++        (r"(?:\u2109|\u00b0\s*F)(?![A-Za-z])", "\u534e\u6c0f\u5ea6", False),
++    ):
++        def measurement(value: str) -> str:
++            value = spoken_number(value)
++            return word + value if prefix else value + word
++
++        text = re.sub(
++            start + number + r"\s*(?:" + unit + r")?\s*(?:[-\u2013\u2014~\uff5e]|to|\u81f3|\u5230)\s*" + number + r"\s*" + unit,
++            lambda m: measurement(m.group(1)) + "\u81f3" + measurement(m.group(2)),
++            text, flags=re.IGNORECASE,
++        )
++        text = re.sub(start + number + r"\s*" + unit, lambda m: measurement(m.group(1)), text, flags=re.IGNORECASE)
++    for unit, word in (
++        (r"km\s*/\s*h", "\u516c\u91cc\u6bcf\u5c0f\u65f6"),
++        (r"mm", "\u6beb\u7c73"), (r"cm", "\u5398\u7c73"), (r"m", "\u7c73"),
++    ):
++        text = re.sub(r"(?<=\d)\s*" + unit + r"(?![A-Za-z0-9_/^\u00b2\u00b3])", word, text, flags=re.IGNORECASE)
++    return text
++
++
+ def normalize_symbols_for_tts(text: str) -> str:
+     """Expand common symbols/shorthand into words a TTS engine reads well."""
+     if not text:
+         return ""
+     text = re.sub("[   ]", " ", str(text))  # non-breaking / thin spaces
+     text = text.replace("\u2212", "-").replace("…", "...")  # minus sign, ellipsis
+-    text = _normalize_temperature_ranges(text)
+-    # Temperatures with a number first, then bare units ("measured in degrees C"),
+-    # then any remaining degree symbol (angles, stray cases).
+-    for unit, word in _DEGREE_UNITS:
+-        text = re.sub(
+-            r"(?<!\w)([-+]?\d+(?:\.\d+)?)\s*°\s*" + unit + r"\b", r"\1 degrees " + word, text, flags=re.IGNORECASE,
+-        )
+-    for unit, word in _DEGREE_UNITS:
+-        text = re.sub(r"°\s*" + unit + r"\b", "degrees " + word, text, flags=re.IGNORECASE)
+-    text = re.sub(r"(?<!\w)([-+]?\d+(?:\.\d+)?)\s*°", r"\1 degrees", text).replace("°", " degrees")
+-    # Common weather/travel units.
+-    for pattern, word in _UNIT_WORDS:
+-        text = re.sub(r"(?<=\d)\s*" + pattern + r"\b", " " + word, text, flags=re.IGNORECASE)
++    chinese = bool(re.search(r"[\u3400-\u9fff]", text))
++    if chinese:
++        text = _normalize_chinese_units_for_tts(text)
++    else:
++        text = _normalize_temperature_ranges(text)
++        # Temperatures with a number first, then bare units ("measured in degrees C"),
++        # then any remaining degree symbol (angles, stray cases).
++        for unit, word in _DEGREE_UNITS:
++            text = re.sub(
++                r"(?<!\w)([-+]?\d+(?:\.\d+)?)\s*°\s*" + unit + r"\b", r"\1 degrees " + word, text, flags=re.IGNORECASE,
++            )
++        for unit, word in _DEGREE_UNITS:
++            text = re.sub(r"°\s*" + unit + r"\b", "degrees " + word, text, flags=re.IGNORECASE)
++        text = re.sub(r"(?<!\w)([-+]?\d+(?:\.\d+)?)\s*°", r"\1 degrees", text).replace("°", " degrees")
++        # Common weather/travel units.
++        for pattern, word in _UNIT_WORDS:
++            text = re.sub(r"(?<=\d)\s*" + pattern + r"\b", " " + word, text, flags=re.IGNORECASE)
+     # Numeric rates only ("5/month" -> "5 per month").  Requiring digit-then-letter
+     # keeps "and/or", "N/A", "TCP/IP" and dates like "2026/06" intact.
+     text = re.sub(r"(?<=\d)\s*/\s*(?=[A-Za-z])", " per ", text)
+@@ -115,7 +150,8 @@
+     # currencies run first so "$" doesn't eat "NZ$".
+     for symbol, word, flags in _CURRENCY_WORDS:
+         text = re.sub(symbol + r"\s*([\d,]*\d(?:\.\d+)?)", r"\1 " + word, text, flags=flags)
+-    text = re.sub(r"(?<=\d)\s*%", " percent", text)
++    if not chinese:
++        text = re.sub(r"(?<=\d)\s*%", " percent", text)
+     # Operators and separators that commonly leak from formatted answers.
+     text = re.sub("[•◦▪▫]", " ", text.replace("&", " and "))  # bullet glyphs
+     for symbol, word in (("→", " to "), ("⇒", " to "), ("≈", " about "), ("~", " about ")):
 --- a/tools/transcription_local.py
 +++ b/tools/transcription_local.py
 @@ -255,7 +255,14 @@
@@ -232,7 +318,46 @@
  }
  
  /** Build the ``session.create`` params for the sidecar session.
-@@ -107,7 +108,8 @@
+@@ -102,12 +103,47 @@
+   }
+ }
+ 
++function prepareXiaoxiSpokenText(rawText: string): string {
++  let text = rawText
++    .replace(/```[\s\S]*?```/g, ' ')
++    .replace(/!\[([^\]]*)\]\((?:[^()]|\([^)]*\))*\)/g, ' $1 ')
++    .replace(/\[([^\]]+)\]\((?:[^()]|\([^)]*\))*\)/g, '$1')
++    .replace(/https?:\/\/\S+/g, '')
++    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, '')
++    .replace(/~~(.+?)~~/gs, '$1')
++    .replace(/[*#_`>]+/g, ' ')
++    .replace(/\u2212/g, '-')
++  if (/[\u3400-\u9fff]/.test(text)) {
++    const number = String.raw`([-+]?(?:\d+(?:\.\d+)?|\.\d+))`
++    const start = String.raw`(?<![\d.])`
++    const units: [string, string, boolean][] = [
++      [String.raw`[%％]`, '百分之', true],
++      [String.raw`(?:℃|°\s*C)(?![A-Za-z])`, '摄氏度', false],
++      [String.raw`(?:℉|°\s*F)(?![A-Za-z])`, '华氏度', false],
++    ]
++    for (const [unit, word, prefix] of units) {
++      const measurement = (value: string) => {
++        const signed = value.replace(/-/g, '负').replace(/\+/g, '正')
++        return prefix ? word + signed : signed + word
++      }
++      const range = new RegExp(start + number + String.raw`\s*(?:` + unit + String.raw`)?\s*(?:[-–—~～]|to|至|到)\s*` + number + String.raw`\s*` + unit, 'gi')
++      text = text.replace(range, (_match, low: string, high: string) => measurement(low) + '至' + measurement(high))
++      text = text.replace(new RegExp(start + number + String.raw`\s*` + unit, 'gi'), (_match, value: string) => measurement(value))
++    }
++    for (const [unit, word] of [[String.raw`km\s*/\s*h`, '公里每小时'], ['mm', '毫米'], ['cm', '厘米'], ['m', '米']]) {
++      text = text.replace(new RegExp(String.raw`(?<=\d)\s*` + unit + String.raw`(?![A-Za-z0-9_/^²³])`, 'gi'), word)
++    }
++  }
++  return text.replace(/~/g, ' ').replace(/\s+/g, ' ').trim()
++}
++
+ export function ChatSidebar({
+   channel,
    profile,
    className,
    onDashboardNewSessionRequest,
@@ -242,7 +367,7 @@
  }: ChatSidebarProps) {
    const navigate = useNavigate()
    // `version` bumps on reconnect (manual button, profile/channel switch) and
-@@ -146,6 +148,259 @@
+@@ -146,6 +182,324 @@
    // Short name of a just-saved model awaiting confirm to reload (a fresh chat
    // session is how the running chat adopts it; we confirm before discarding it).
    const [pendingReloadModel, setPendingReloadModel] = useState<string | null>(null)
@@ -264,6 +389,7 @@
 +  const audioRef = useRef<HTMLAudioElement | null>(null)
 +  const ttsRequestRef = useRef<AbortController | null>(null)
 +  const recognitionRef = useRef<any>(null)
++  const voiceInputRef = useRef<{ source: 'manual' | 'button'; stopRequested: boolean } | null>(null)
 +  const lastBtnEventRef = useRef<string | null>(null)
 +
 +  const stopSpeaking = useCallback(() => {
@@ -282,11 +408,7 @@
 +  }, [])
 +
 +  const speakWithXiaoxi = useCallback(async (rawText: string, overrideVoice?: string) => {
-+    const clean = rawText
-+      .replace(/```[\s\S]*?```/g, '')
-+      .replace(/[*#_`~>-]+/g, ' ')
-+      .replace(/\s+/g, ' ')
-+      .trim()
++    const clean = prepareXiaoxiSpokenText(rawText)
 +    if (!clean) return
 +    stopSpeaking()
 +    const request = new AbortController()
@@ -385,19 +507,43 @@
 +  }, [autoTts, speakWithXiaoxi])
 +  useEffect(() => () => stopSpeaking(), [channel, profile, stopSpeaking])
 +
-+  const toggleVoiceInput = useCallback(() => {
-+    if (micListening && recognitionRef.current) {
-+      try {
-+        if (typeof recognitionRef.current.stop === 'function') {
-+          recognitionRef.current.stop()
-+        }
-+      } catch {}
++  const stopVoiceInput = useCallback(() => {
++    const session = voiceInputRef.current
++    if (!session || session.stopRequested) return
++    session.stopRequested = true
++    setMicListening(false)
++    try {
++      if (recognitionRef.current?.state !== 'inactive') recognitionRef.current?.stop()
++    } catch {
++      // SpeechRecognition may still be starting; onstart will finish the stop.
++    }
++  }, [])
++
++  const startVoiceInput = useCallback((source: 'manual' | 'button' = 'manual') => {
++    if (voiceInputRef.current) return
++    const session = { source, stopRequested: false }
++    voiceInputRef.current = session
++    const isCurrent = () => voiceInputRef.current === session
++    const finish = () => {
++      if (!isCurrent()) return
++      voiceInputRef.current = null
++      recognitionRef.current = null
 +      setMicListening(false)
-+      return
 +    }
 +    stopSpeaking()
++    setMicListening(true)
 +    if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' && typeof MediaRecorder !== 'undefined') {
++      let inputStream: MediaStream | null = null
 +      void navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
++        inputStream = stream
++        if (!isCurrent() || session.stopRequested) {
++          stream.getTracks().forEach(t => t.stop())
++          if (isCurrent()) {
++            finish()
++            setVoiceStatus('录音已结束，请按住按钮说话')
++          }
++          return
++        }
 +        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
 +          ? 'audio/webm;codecs=opus'
 +          : MediaRecorder.isTypeSupported('audio/mp4')
@@ -408,19 +554,29 @@
 +        recorder.ondataavailable = ev => {
 +          if (ev.data && ev.data.size > 0) chunks.push(ev.data)
 +        }
++        recorder.onerror = () => {
++          stream.getTracks().forEach(t => t.stop())
++          if (!isCurrent()) return
++          finish()
++          setVoiceStatus('麦克风录音失败，请再试一次')
++        }
 +        recorder.onstop = () => {
 +          stream.getTracks().forEach(t => t.stop())
++          if (!isCurrent()) return
 +          setMicListening(false)
 +          const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
 +          if (blob.size < 256) {
++            finish()
 +            setVoiceStatus('录音太短，未检测到有效语音')
 +            return
 +          }
 +          setVoiceStatus('本地 Whisper 正在识别语音...')
 +          const reader = new FileReader()
 +          reader.onloadend = () => {
++            if (!isCurrent()) return
 +            const dataUrl = typeof reader.result === 'string' ? reader.result : ''
 +            if (!dataUrl) {
++              finish()
 +              setVoiceStatus('录音读取失败')
 +              return
 +            }
@@ -431,6 +587,8 @@
 +              body: JSON.stringify({ data_url: dataUrl, mime_type: blob.type || 'audio/webm' }),
 +            })
 +              .then(res => {
++                if (!isCurrent()) return
++                finish()
 +                const text = (res?.transcript || '').trim()
 +                if (text) {
 +                  setVoiceStatus(`已发送：“${text}”`)
@@ -440,6 +598,8 @@
 +                }
 +              })
 +              .catch(err => {
++                if (!isCurrent()) return
++                finish()
 +                setVoiceStatus(`语音识别失败：${err instanceof Error ? err.message : '请求异常'}`)
 +              })
 +          }
@@ -447,16 +607,20 @@
 +        }
 +        recognitionRef.current = recorder
 +        recorder.start()
-+        setMicListening(true)
-+        setVoiceStatus('正在录音，说完后请再点一次结束并发送...')
++        setVoiceStatus(source === 'button'
++          ? '正在录音，松开实体按钮后自动发送...'
++          : '正在录音，说完后请再点一次结束并发送...')
 +      }).catch(err => {
-+        setMicListening(false)
++        inputStream?.getTracks().forEach(t => t.stop())
++        if (!isCurrent()) return
++        finish()
 +        setVoiceStatus(`麦克风权限提示：${err instanceof Error ? err.message : '无法打开麦克风'}`)
 +      })
 +      return
 +    }
 +    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 +    if (!SR) {
++      finish()
 +      setVoiceStatus('当前浏览器不支持麦克风录音')
 +      return
 +    }
@@ -466,10 +630,15 @@
 +    rec.continuous = false
 +    let finalTranscript = ''
 +    rec.onstart = () => {
++      if (!isCurrent()) { rec.abort(); return }
++      if (session.stopRequested) { rec.stop(); return }
 +      setMicListening(true)
-+      setVoiceStatus('请说话（说完自动发送给小西）...')
++      setVoiceStatus(source === 'button'
++        ? '正在录音，松开实体按钮后自动发送...'
++        : '请说话（说完自动发送给小西）...')
 +    }
 +    rec.onresult = (event: any) => {
++      if (!isCurrent()) return
 +      let interim = ''
 +      for (let i = event.resultIndex; i < event.results.length; ++i) {
 +        const chunk = event.results[i][0]?.transcript || ''
@@ -483,11 +652,13 @@
 +      if (preview) setVoiceStatus(`识别中：${preview}`)
 +    }
 +    rec.onerror = (ev: any) => {
-+      setMicListening(false)
++      if (!isCurrent()) return
++      finish()
 +      setVoiceStatus(`语音识别提示：${ev?.error || '未检测到语音'}`)
 +    }
 +    rec.onend = () => {
-+      setMicListening(false)
++      if (!isCurrent()) return
++      finish()
 +      const text = finalTranscript.trim()
 +      if (text) {
 +        setVoiceStatus(`已发送：“${text}”`)
@@ -497,12 +668,31 @@
 +      }
 +    }
 +    recognitionRef.current = rec
-+    rec.start()
-+  }, [micListening, onSendVoiceText, profile, stopSpeaking])
++    try { rec.start() } catch (err) {
++      finish()
++      setVoiceStatus(`语音识别提示：${err instanceof Error ? err.message : '无法启动录音'}`)
++    }
++  }, [onSendVoiceText, profile, stopSpeaking])
++
++  const toggleVoiceInput = useCallback(() => {
++    if (voiceInputRef.current) stopVoiceInput()
++    else startVoiceInput()
++  }, [startVoiceInput, stopVoiceInput])
++
++  useEffect(() => () => {
++    voiceInputRef.current = null
++    const recognition = recognitionRef.current
++    recognitionRef.current = null
++    try {
++      if (typeof recognition?.abort === 'function') recognition.abort()
++      else if (recognition?.state !== 'inactive') recognition?.stop()
++    } catch {}
++    setMicListening(false)
++  }, [channel, profile])
  
    const refreshEffectiveModel = useCallback(() => {
      void api
-@@ -335,6 +590,16 @@
+@@ -335,6 +689,16 @@
      const offNewSession = feed.on('dashboard.new_session_requested', () => {
        onDashboardNewSessionRequest?.()
      })
@@ -519,7 +709,7 @@
  
      void connect()
  
-@@ -348,9 +613,54 @@
+@@ -348,9 +712,62 @@
        offState()
        offSessionInfo()
        offNewSession()
@@ -528,9 +718,15 @@
      }
    }, [channel, feed, onDashboardNewSessionRequest, onSessionTitleChange, version])
 +
-+  // Poll UNO physical button events (D2/D3/D4) every 1.2s for hands-free voice/query trigger.
++  // Poll UNO physical button events serially, 250ms after each response.
++  const voiceControlsRef = useRef({ startVoiceInput, stopVoiceInput, onSendVoiceText })
++  useEffect(() => {
++    voiceControlsRef.current = { startVoiceInput, stopVoiceInput, onSendVoiceText }
++  }, [startVoiceInput, stopVoiceInput, onSendVoiceText])
 +  useEffect(() => {
 +    let cancelled = false
++    let timer: number | undefined
++    lastBtnEventRef.current = null
 +    const pollBtn = async () => {
 +      try {
 +        const q = profile ? `?profile=${encodeURIComponent(profile)}` : ''
@@ -551,30 +747,32 @@
 +          if (res.state === 'button_long_press_voice') {
 +            setAutoTts(true)
 +            try { localStorage.setItem('xiaoxi_auto_tts', '1') } catch {}
-+            setVoiceStatus('物理按钮长按：开启小西语音对讲...')
-+            if (!micListening) toggleVoiceInput()
++            voiceControlsRef.current.startVoiceInput('button')
++          } else if (res.state === 'button_long_release_voice') {
++            if (voiceInputRef.current?.source === 'button') voiceControlsRef.current.stopVoiceInput()
 +          } else if (res.state === 'button_double_press') {
 +            setAutoTts(true)
 +            try { localStorage.setItem('xiaoxi_auto_tts', '1') } catch {}
 +            setVoiceStatus('物理按钮双击：查询寝室环境...')
-+            onSendVoiceText?.('现在室内温度、湿度和光照分别是多少？')
++            voiceControlsRef.current.onSendVoiceText?.('现在室内温度、湿度和光照分别是多少？')
 +          }
 +        }
 +      } catch {
-+        // ignore transient poll errors
++        // Keep polling after a transient failure without overlapping requests.
++      } finally {
++        if (!cancelled) timer = window.setTimeout(pollBtn, 250)
 +      }
 +    }
 +    void pollBtn()
-+    const timer = window.setInterval(pollBtn, 1200)
 +    return () => {
 +      cancelled = true
-+      window.clearInterval(timer)
++      window.clearTimeout(timer)
 +    }
-+  }, [micListening, onSendVoiceText, profile, toggleVoiceInput])
++  }, [channel, profile])
  
    // Seed the badge on mount and re-read it whenever the sockets are rebuilt
    // (a profile/channel switch bumps `version`).
-@@ -406,6 +716,83 @@
+@@ -406,6 +823,83 @@
          <Badge tone={STATE_TONE[state]} className="shrink-0">
            {STATE_LABEL[state]}
          </Badge>
@@ -595,13 +793,13 @@
 +            const v = ev.target.value
 +            setTtsVoice(v)
 +            try { localStorage.setItem('xiaoxi_tts_voice', v) } catch {}
-+            void speakWithXiaoxi('你好，我是交大小西，已切换语音声线。', v)
++            void speakWithXiaoxi('你好，我是小西，已切换音色。', v)
 +          }}
 +          className="w-full rounded border border-border bg-background px-2 py-1 text-xs text-midground"
 +          title="选择小西播报声线（切换后自动试听）"
 +        >
 +          <option value="zh-CN-XiaoxiaoNeural">晓晓 · 温暖自然女声（推荐）</option>
-+          <option value="zh-CN-shaanxi-XiaoniNeural">晓妮 · 西安/陕西话女声（交大特色）</option>
++          <option value="zh-CN-shaanxi-XiaoniNeural">晓妮 · 陕西话女声</option>
 +          <option value="zh-TW-HsiaoChenNeural">晓臻 · 温柔台湾腔女声</option>
 +          <option value="zh-TW-HsiaoYuNeural">晓雨 · 清脆台湾腔女声</option>
 +          <option value="zh-CN-liaoning-XiaobeiNeural">晓北 · 幽默东北话女声</option>
@@ -1094,7 +1292,15 @@
      if os.getenv("HERMES_YOLO_MODE"):
          lines.append(f"[bold red]⚠ YOLO mode[/] [dim {dim}]— all approval prompts bypassed[/]")
      lines.append(f"[dim {dim}]{cwd}[/]")
-@@ -965,7 +965,7 @@
+@@ -952,6 +952,7 @@
+     """
+     from rich.panel import Panel
+     from rich.table import Table
++    from rich.text import Text
+     if get_toolset_for_tool is None:
+         from model_tools import get_toolset_for_tool
+     tools = tools or []
+@@ -965,7 +966,7 @@
      text = _skin_color("banner_text", "#FFF8DC")
      # Use skin's custom caduceus art if provided
      _bskin = _quiet(_active_skin)
@@ -1103,12 +1309,15 @@
      left_lines += _banner_left_lines(model, cwd, session_id, context_length, provider, accent=accent, dim=dim,
                                       context_pinned=context_pinned)
      right_lines = _banner_tool_lines(
-@@ -1027,6 +1027,6 @@
+@@ -1026,7 +1027,8 @@
+         layout_table, title=f"[bold {_skin_color('banner_title', '#FFD700')}]{version_label}[/]",
          border_style=_skin_color("banner_border", "#CD7F32"), padding=(0, 2))
      console.print()
-     if shutil.get_terminal_size().columns >= 95:
+-    if shutil.get_terminal_size().columns >= 95:
 -        console.print(getattr(_bskin, "banner_logo", None) or HERMES_AGENT_LOGO)
-+        console.print(getattr(_bskin, "banner_logo", None) or "xiaoxi")
++    banner_logo = Text.from_markup(getattr(_bskin, "banner_logo", None) or "xiaoxi")
++    if max(line.cell_len for line in banner_logo.split("\n")) + 2 <= console.width:
++        console.print(banner_logo)
          console.print()
      console.print(outer_panel)
 --- a/hermes_cli/cli_render.py
@@ -1282,11 +1491,11 @@
  import unicodeSpinners from 'unicode-animations'
  
 -import { artWidth, caduceus, CADUCEUS_WIDTH, logo, LOGO_WIDTH } from '../banner.js'
-+import { artWidth, caduceus, CADUCEUS_WIDTH } from '../banner.js'
++import { artWidth, caduceus, CADUCEUS_WIDTH, logo } from '../banner.js'
  import { flat } from '../lib/text.js'
  import type { Theme } from '../theme.js'
  import type { PanelSection, SessionInfo } from '../types.js'
-@@ -49,143 +49,15 @@
+@@ -49,143 +49,20 @@
    )
  }
  
@@ -1344,7 +1553,7 @@
  export function Banner({ maxWidth, t }: { maxWidth?: number; t: Theme }) {
    const term = useStdout().stdout?.columns ?? 80
    const cols = Math.max(1, Math.min(term, maxWidth ?? term))
- 
+-
 -  if (cols < HIDE_BELOW) {
 -    return null
 -  }
@@ -1398,7 +1607,8 @@
 -
 -  const name = cols >= 52 ? t.brand.name : (t.brand.name.split(' ')[0] ?? t.brand.name)
 -  const tag = cols >= 64 ? TAG_FULL : cols >= 46 ? TAG_MID : TAG_TINY
--
++  const logoLines = logo(t.color, t.bannerLogo || t.brand.name)
+ 
    return (
 -    <Box flexDirection="column" marginBottom={1}>
 -      <WidgetGrid
@@ -1428,13 +1638,17 @@
 -        ]}
 -      />
 +    <Box marginBottom={1} width={cols}>
-+      <Text bold color={t.color.primary} wrap="truncate-end">
-+        {t.brand.name}
-+      </Text>
++      {cols >= artWidth(logoLines) + 2 ? (
++        <ArtLines lines={logoLines} />
++      ) : (
++        <Text bold color={t.color.primary} wrap="truncate-end">
++          {t.brand.name}
++        </Text>
++      )}
      </Box>
    )
  }
-@@ -214,7 +86,7 @@
+@@ -214,7 +91,7 @@
    const cols = Math.max(20, Math.min(term, maxWidth ?? term))
    const heroLines = caduceus(t.color, t.bannerHero || undefined)
    const leftW = Math.min((artWidth(heroLines) || CADUCEUS_WIDTH) + 4, Math.floor(cols * 0.4))
@@ -1443,7 +1657,7 @@
    const w = Math.max(20, wide ? cols - leftW - 14 : cols - 12)
    const lineBudget = Math.max(12, w - 2)
    const strip = (s: string) => (s.endsWith('_tools') ? s.slice(0, -6) : s)
-@@ -362,7 +234,6 @@
+@@ -362,7 +239,6 @@
  
        <Text color={t.color.accent}>
          {(info.model ?? '').split('/').pop()}
@@ -1451,7 +1665,7 @@
        </Text>
  
        <Text color={t.color.muted} wrap="truncate-end">
-@@ -380,21 +251,19 @@
+@@ -380,21 +256,19 @@
  
    const infoColumn = (
      <Box flexDirection="column" width="100%">

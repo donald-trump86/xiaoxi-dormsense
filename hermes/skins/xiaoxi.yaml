@@ -1,6 +1,6 @@
-# Reusable native terminal template: compact text, no pixel mascot.
+# Reusable native terminal template: lowercase pixel wordmark, no mascot.
 name: xiaoxi
-description: Minimal xiaoxi terminal wordmark
+description: Warm pixel-art xiaoxi terminal wordmark
 branding:
   agent_name: xiaoxi
   welcome: "小西已就绪。输入消息，或使用 /help。"
@@ -8,6 +8,13 @@ branding:
   response_label: " xiaoxi "
   prompt_symbol: "❯"
   help_header: "xiaoxi /help"
-banner_logo: "[#E2B27E]xiaoxi[/]"
+banner_logo: |-
+  [#F1CC9B]              ██                                          ██[/]
+  [#EAC08D] [/]
+  [#E2B27E]██      ██  ████      ██████      ██████    ██      ██  ████[/]
+  [#D9A06A]  ██  ██      ██            ██  ██      ██    ██  ██      ██[/]
+  [#D18A5C]    ██        ██      ████████  ██      ██      ██        ██[/]
+  [#C87452]  ██  ██      ██    ██      ██  ██      ██    ██  ██      ██[/]
+  [#B95D4B]██      ██  ██████    ████████    ██████    ██      ██  ██████[/]
 # A single space suppresses the native fallback hero.
 banner_hero: " "

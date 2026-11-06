@@ -3,104 +3,93 @@
   "upstream_repository": "https://github.com/NousResearch/hermes-agent",
   "base_image": "nousresearch/hermes-agent@sha256:39c4ac5a8eaecddc525cd680eb4bda1143f2b12e8f21e2d63c2d5d471a8390c8",
   "upstream_root": "/opt/hermes",
-  "patch_sha256": "d362e124c31f13465353ce68d1dee67a3ee40d021bf54fcb2e97dc39e1267fa8",
+  "patch_sha256": "e9fa13506ab8d612ee845b46fa9f043950bfd14fae2ebfcfc77727d4554488b2",
   "observed_source_date": "2026-11-05",
   "intentional_formal_difference": "Remove semantic STT substitutions; preserve zhconv Simplified Chinese conversion.",
   "files": [
     {
       "path": "hermes_cli/web_routers/audio.py",
       "before_sha256": "c1dc603f41bd0e784c7270a3865173e9b19390d3104f87cfdceffa24527c503a",
-      "observed_live_sha256": "32052a35fd7241fc32e6a6f5887da134a07187d2f5f488672032aea819e0aa1a",
       "after_sha256": "32052a35fd7241fc32e6a6f5887da134a07187d2f5f488672032aea819e0aa1a"
     },
     {
       "path": "tools/tts_tool.py",
       "before_sha256": "a9db8dd777d782ebf796d628bfa95d2f7f48c3b2be7fe8ef68479d3f341bffb7",
-      "observed_live_sha256": "29698db554858f59d1789c152d5ff559609a9f2cd34f788fc9ee8e9c912caaf9",
       "after_sha256": "29698db554858f59d1789c152d5ff559609a9f2cd34f788fc9ee8e9c912caaf9"
     },
     {
       "path": "tools/tts_tool_providers.py",
       "before_sha256": "b01b253e4887aa16d063b684d2cb3c7caf2b6655d69e9187c9c52d448ca7c740",
-      "observed_live_sha256": "89840d394c645611729d7e939f978696adba29f59342d8f59a24f6ddeaaedd72",
       "after_sha256": "89840d394c645611729d7e939f978696adba29f59342d8f59a24f6ddeaaedd72"
+    },
+    {
+      "path": "tools/tts_text_normalize.py",
+      "before_sha256": "b9f505432c55080ba50f0ae7d7ddba0ad059228ce8a403b72cc219002e7fd974",
+      "after_sha256": "382a5b7d52cf4ff935ee32348e1d6ea12a02189c06b4792f2a67e78ef55536e2"
     },
     {
       "path": "tools/transcription_local.py",
       "before_sha256": "183c87520dd5aa03db1df1ceaef48074e354d3a2ee3f3340776be386e9337c8d",
-      "observed_live_sha256": "aa4fa94699b3e5f42e4d0983cd58588bf4c322a42eaa9ea19c273d566dd7f6b5",
       "after_sha256": "e6c66503b27f0d7af4f2774b48d72bff70ee5d32b591fbbbf8524fe6e18ba0cb"
     },
     {
       "path": "web/src/components/ChatSidebar.tsx",
       "before_sha256": "50148fbe0b0010a4f83ad885407cbe9d2858dd14ba7e4bf7cde065aa1a7a06ee",
-      "observed_live_sha256": "c5087c169ee2ead9dc697c8a2da865812e7879016fc35be28a040c8dfc6f5e39",
-      "after_sha256": "c5087c169ee2ead9dc697c8a2da865812e7879016fc35be28a040c8dfc6f5e39"
+      "after_sha256": "6fcf21a6490a1e48e6a086b66fe63ed4ee14d0cf4239494d1249375aef613aba"
     },
     {
       "path": "web/src/pages/ChatPage.tsx",
       "before_sha256": "c638d207d6219011f7d1d3ac35062a244b84b0b47875ae11ad7f97e37d7110bd",
-      "observed_live_sha256": "5636113fd4ee12644957f3a124f404c4e88e261677e80ae22d3a9b99474bc1a8",
       "after_sha256": "63f7855d7b1b50cf0edc011b3d63171cf8fd627f61278a967e1a4ae445a339eb"
     },
     {
       "path": "hermes_cli/banner.py",
       "before_sha256": "4e3cb4cdb32c0ab00281de26fb3980981cd47f7cb95961eb28d8408a5af54bad",
-      "observed_live_sha256": "4e3cb4cdb32c0ab00281de26fb3980981cd47f7cb95961eb28d8408a5af54bad",
-      "after_sha256": "747ba9c5bba0a8ae257f4555e115e1c83e9b4378e0d9855ed585eb287183eed6"
+      "after_sha256": "97267cefcca068b001595f7d4367908ba4c98aa1a039d581f9b7151fb3332be9"
     },
     {
       "path": "hermes_cli/cli_render.py",
       "before_sha256": "9992b59ddd756cc87eff3c2acb96cb94f9b9df37d110b638f74db43860aca88a",
-      "observed_live_sha256": "9992b59ddd756cc87eff3c2acb96cb94f9b9df37d110b638f74db43860aca88a",
       "after_sha256": "1ffa9934ad462be8a123bb297ed24152b8dd7cc60881617c6e4330f4071556a8"
     },
     {
       "path": "hermes_cli/dashboard_auth/login_page.py",
       "before_sha256": "2dfeb9d1ccd9ab46f1c20845a031fecc1cdf6dc0b8bb75edcf2dc2bd75184085",
-      "observed_live_sha256": "2dfeb9d1ccd9ab46f1c20845a031fecc1cdf6dc0b8bb75edcf2dc2bd75184085",
       "after_sha256": "ea50c70ef980a36e61247bc67e6147445bc8603ac87d188ecef4476b04051966"
     },
     {
       "path": "ui-tui/src/components/branding.tsx",
       "before_sha256": "5b367f4dbf21957719d4e544bcfdbd1b32bde4fe61bb9e2c9ddac8d6c83a2f77",
-      "observed_live_sha256": "5b367f4dbf21957719d4e544bcfdbd1b32bde4fe61bb9e2c9ddac8d6c83a2f77",
-      "after_sha256": "e309831c2c300b03938b19d571ef2137641e082da2b0cd36a3acb9812fc6f8f1"
+      "after_sha256": "e0f24e56125c4ca2a261c66e7d5fd1bdf7b3d66e9bd876ec41d049e4ac5f4510"
     },
     {
       "path": "ui-tui/src/theme.ts",
       "before_sha256": "4d1e9cfba7f4af6fc7d2819844b28af343414861679d7657ce53c7f6fafadc34",
-      "observed_live_sha256": "4d1e9cfba7f4af6fc7d2819844b28af343414861679d7657ce53c7f6fafadc34",
       "after_sha256": "76d5d6118fd7fd944b7eff12d0a5ab3964e94eaec0190f9fd8e3c97488a931bd"
     },
     {
       "path": "ui-tui/src/app/useMainApp.ts",
       "before_sha256": "8f5201b7042e8fdc98b34e857c36b2257fbf45809221c5603fb94f71c1a2ddfd",
-      "observed_live_sha256": "8f5201b7042e8fdc98b34e857c36b2257fbf45809221c5603fb94f71c1a2ddfd",
       "after_sha256": "ad3f6fedfdb51afe6950bb25e59495f4971b27554d611e3f68870c01b15d4a5e"
     },
     {
       "path": "ui-tui/src/app/uiStore.ts",
       "before_sha256": "e3a49ced9a2d3e47313d2508becdbacc76c05188ea357503eb3930f5a0c44569",
-      "observed_live_sha256": "e3a49ced9a2d3e47313d2508becdbacc76c05188ea357503eb3930f5a0c44569",
       "after_sha256": "f00f3461cc8ab76da900ffc19c0cf408417137311f042beee42b4ab199997b67"
     },
     {
       "path": "web/src/App.tsx",
       "before_sha256": "028e25e5185af61b822b0ca130166724efe8d059288173d0a24b19291ecd9881",
-      "observed_live_sha256": "028e25e5185af61b822b0ca130166724efe8d059288173d0a24b19291ecd9881",
       "after_sha256": "ac0481edc45f2bc795ff7a6c8a863631c7847dd29fcb1b94e85dbc5c42c8e1cc"
     },
     {
       "path": "web/src/components/SidebarFooter.tsx",
       "before_sha256": "c070c3c534b7b51bef52b1de94cdeca1d6a2e1e8b357016af8115993e29ad306",
-      "observed_live_sha256": "c070c3c534b7b51bef52b1de94cdeca1d6a2e1e8b357016af8115993e29ad306",
       "after_sha256": "28e31d3c7c093981747e8aadcb0c48f2a625415b2172eeac479477f4581e0a49"
     },
     {
       "path": "web/index.html",
       "before_sha256": "77d48392ecc8eb3e82aa6f1fbef80dd734c323055cf0e409ffa2069c54a9c895",
-      "observed_live_sha256": "77d48392ecc8eb3e82aa6f1fbef80dd734c323055cf0e409ffa2069c54a9c895",
       "after_sha256": "95bc8bdee77fa8b59895d9ad25dcc45e396ecc89177bdf70f21379fb5a79fa57"
     }
   ]

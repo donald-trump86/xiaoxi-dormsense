@@ -19,12 +19,15 @@ const page = ts.transpileModule(globalThis.__chatPageSource, {
 const pageErrors = (page.diagnostics || []).filter(d => d.category === ts.DiagnosticCategory.Error)
 assert.equal(pageErrors.length, 0, pageErrors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('\n'))
 const js = transpiled.outputText
-const callbackBlock = js.slice(js.indexOf('const stopSpeaking = useCallback('), js.indexOf('const toggleVoiceInput = useCallback('))
+const normalizeStart = js.indexOf('function prepareXiaoxiSpokenText(')
+assert(normalizeStart >= 0, 'Playback uses the actual staged speech text helper')
+const normalizeBlock = js.slice(normalizeStart, js.indexOf('\n}', normalizeStart) + 2)
+const callbackBlock = js.slice(js.indexOf('const stopSpeaking = useCallback('), js.indexOf('const stopVoiceInput = useCallback('))
 const eventBlock = js.slice(js.indexOf("const offMsgComplete = feed.on('message.complete'"), js.indexOf('void connect()', js.indexOf('const offMsgComplete')))
 assert(callbackBlock.startsWith('const stopSpeaking'))
 assert(eventBlock.startsWith('const offMsgComplete'))
 const inputs = ['useCallback', 'useRef', 'useEffect', 'audioRef', 'ttsRequestRef', 'setTtsSpeaking', 'setVoiceStatus', 'setPlaybackSource', 'ttsVoice', 'autoTts', 'profile', 'channel', 'fetchJSON', 'Audio', 'window', 'SpeechSynthesisUtterance', 'feed', 'setLastReplyText']
-const initialize = new Function(...inputs, `${callbackBlock}\n${eventBlock}\nreturn { stopSpeaking, speakWithXiaoxi, voicePlaybackRef, offMsgComplete }`)
+const initialize = new Function(...inputs, `${normalizeBlock}\n${callbackBlock}\n${eventBlock}\nreturn { stopSpeaking, speakWithXiaoxi, voicePlaybackRef, offMsgComplete }`)
 const tick = () => new Promise(resolve => setImmediate(resolve))
 const deferred = () => {
   let resolve, reject
@@ -150,6 +153,57 @@ test('browser speech synthesis runs only after explicit native selection', async
   f.runtime.stopSpeaking()
   f.native[0].onerror({ error: 'old cancelled utterance' })
   assert.equal(f.state.status, null)
+})
+test('cloud and browser receive complete Chinese measurements with signed decimals and ranges', async () => {
+  const measurements = [
+    ['室内湿度51.5%，温度23.9°C；室外湿度65％，体感−5.2℃，华氏+32.5°F。',
+      '室内湿度百分之51.5，温度23.9摄氏度；室外湿度百分之65，体感负5.2摄氏度，华氏正32.5华氏度。'],
+    ['天气：humidity 51.5%, temperature -2.3°C; range −5℃～+2℃，湿度40-60％，华氏-5--1℉。',
+      '天气：humidity 百分之51.5, temperature 负2.3摄氏度; range 负5摄氏度至正2摄氏度，湿度百分之40至百分之60，华氏负5华氏度至负1华氏度。'],
+    ['变化-5.25%或+0.5％，误差−.75%，范围45%—51.5%。',
+      '变化百分之负5.25或百分之正0.5，误差百分之负.75，范围百分之45至百分之51.5。'],
+    ['风速12.5km/h，降水2mm，积雪3cm，能见度500m；频率5MHz，速度3m/s，重量7mg。',
+      '风速12.5公里每小时，降水2毫米，积雪3厘米，能见度500米；频率5MHz，速度3m/s，重量7mg。'],
+  ]
+  for (const voice of ['zh-CN-XiaoxiaoNeural', 'browser-native']) {
+    for (const [text, expected] of measurements) {
+      const f = fixture()
+      await f.runtime.speakWithXiaoxi(text, voice)
+      const spoken = voice === 'browser-native' ? f.native[0].text : JSON.parse(f.requests[0].init.body).text
+      assert.equal(spoken, expected)
+      assert.doesNotMatch(spoken, /percent|degrees/)
+    }
+  }
+})
+test('speech omits fenced code and encoded URL targets while retaining link labels', async () => {
+  const text = '查看[天气51.5%](https://example.invalid/a%20b?q=23%C2%B0C) 和 https://example.invalid/65%20percent ```const x = "99% -99°C"``` 温度23.9°C。'
+  for (const voice of ['zh-CN-XiaoxiaoNeural', 'browser-native']) {
+    const f = fixture()
+    await f.runtime.speakWithXiaoxi(text, voice)
+    const spoken = voice === 'browser-native' ? f.native[0].text : JSON.parse(f.requests[0].init.body).text
+    assert.equal(spoken, '查看天气百分之51.5 和 温度23.9摄氏度。')
+  }
+})
+test('already Chinese speech is idempotent and English keeps existing symbol wording', async () => {
+  for (const voice of ['zh-CN-XiaoxiaoNeural', 'browser-native']) {
+    for (const text of [
+      '湿度百分之51.5，温度23.9摄氏度，体感负5.2摄氏度。',
+      'Humidity 51.5%, temperature -2.3°C, range 11–17°F.',
+    ]) {
+      const f = fixture()
+      await f.runtime.speakWithXiaoxi(text, voice)
+      const spoken = voice === 'browser-native' ? f.native[0].text : JSON.parse(f.requests[0].init.body).text
+      assert.equal(spoken, text)
+    }
+  }
+})
+test('auto playback normalizes speech without changing the original reply text', async () => {
+  const f = fixture()
+  const text = '室内湿度51.5%，温度−5.2°C。'
+  f.subscriptions[0].handler({ payload: { text, status: 'complete' } })
+  await tick()
+  assert.equal(f.state.lastReply, text)
+  assert.equal(JSON.parse(f.requests[0].init.body).text, '室内湿度百分之51.5，温度负5.2摄氏度。')
 })
 test('existing event subscriber uses latest voice and auto-play toggle', async () => {
   const f = fixture(async url => edgeResult(new URL(`https://offline.invalid${url}`).searchParams.get('voice')))

@@ -5,6 +5,8 @@ COPY apply_patch.py check_voice_dependencies.py requirements-voice.txt requireme
 COPY patches/hermes.patch patches/manifest.json /opt/xiaoxi/patches/
 COPY workspace/AGENTS.md /opt/xiaoxi/workspace/AGENTS.md
 COPY skins/xiaoxi.yaml /opt/xiaoxi/skins/xiaoxi.yaml
+# The native loader discovers bundled plugins here, outside the data volume.
+COPY --chown=hermes:hermes plugins/xiaoxi_weather/ /opt/hermes/plugins/xiaoxi_weather/
 COPY branding/xiaoxi-logo.png branding/xiaoxi-login.png branding/apple-touch-icon.png /opt/hermes/web/public/ds-assets/
 COPY branding/favicon.ico /opt/hermes/web/public/favicon.ico
 
