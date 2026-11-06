@@ -1,0 +1,216 @@
+{
+  "title": "交小西DormSense_结题答辩展示",
+  "slides": [
+    {
+      "title": "交小西 DormSense",
+      "seconds": 15,
+      "note": "各位老师好，我们是交小西项目组。我们的作品是一套放在宿舍桌面上的智能体：它能感知温湿度和光照，用点阵显示状态，也能通过语音交流。下面从硬件、无线通信和智能体三个部分，介绍我们怎样把它做出来。",
+      "source": [
+        "README.md"
+      ]
+    },
+    {
+      "title": "汇报内容",
+      "seconds": 10,
+      "note": "先介绍为什么做交小西，以及它与智能音箱的侧重点有什么不同；再看两块开发板怎样通过MQTT交换数据；然后说明点阵、语音和红外的实现；最后进行实物演示。",
+      "source": [
+        "README.md"
+      ]
+    },
+    {
+      "title": "让宿舍环境，变成看得懂的反馈",
+      "seconds": 25,
+      "note": "做这个项目的起点，是把散落的读数变成一个容易交流的桌面伙伴。SHT31采集温度和湿度，光敏模块感知明暗，点阵直接显示数字和表情。想进一步了解环境时，就问交小西。这样我们把传感、无线传输和人机交互串在了一起。",
+      "source": [
+        "docs/hardware.md",
+        "schemas/telemetry.schema.json"
+      ]
+    },
+    {
+      "title": "和小度相比，我们更想做什么？",
+      "seconds": 40,
+      "note": "小度等商业智能音箱，主要把语音交互和成熟的智能家居生态做成开箱即用的产品。交小西的重点，是把一套宿舍无线感知系统从底层搭起来：自己采集数据，自己设计MQTT消息，再让Hermes按需调用工具读取这些数据。我们还可以改点阵表情、按钮交互和红外学习流程。对我们来说，这个项目既是一个桌面伙伴，也是一套能够继续学习和扩展的课程作品。",
+      "source": [
+        "README.md",
+        "hermes/workspace/AGENTS.md",
+        "https://dueros.baidu.com/didp/doc/dueros-bot-platform/dbp-smart-home/2-iot-quick-get-start/2-1-quick-get-start_markdown"
+      ]
+    },
+    {
+      "title": "两块开发板，分开处理感知和红外",
+      "seconds": 45,
+      "note": "node01使用UNO R4 WiFi。SHT31通过串口送来温湿度，LM393接到A0采集光照，三线按钮负责手势，12乘8点阵显示状态。node02使用ESP32-C3，专门处理红外接收、学习和发射。两块板通过Wi-Fi连接同一个消息服务。供电从一根USB进入UNO，再由5V和GND分配给共地支路。",
+      "source": [
+        "docs/hardware.md",
+        "firmware/arduino-uno-r4/src/main.cpp",
+        "firmware/esp32-c3-ir/src/main.cpp"
+      ]
+    },
+    {
+      "title": "MQTT：无线节点怎样交换消息",
+      "seconds": 55,
+      "note": "MQTT是一种轻量的发布订阅消息协议，适合物联网设备。我们可以把Broker理解为消息分发站：节点把消息发布到一个主题，服务订阅需要的主题，Broker就把消息转过去。发布者和订阅者通过主题对接，彼此不需要知道对方的网络地址。项目中，Wi-Fi负责让开发板接入网络，MQTT运行在TCP连接上，负责组织和分发消息；我们使用TLS加密连接。这样采集端、校验服务和平台可以独立运行，后面增加节点也能沿用同一套方式。",
+      "source": [
+        "docs/mqtt-protocol.md",
+        "deploy/examples/mosquitto-secure.conf"
+      ]
+    },
+    {
+      "title": "MQTT 在项目里的实际走向",
+      "seconds": 50,
+      "note": "环境数据每10秒从node01发到原始遥测主题，校验器检查字段、来源和样本顺序，再发到validated主题，Home Assistant订阅这个主题更新实体。主题也区分不同用途：telemetry装温湿度和光照，status表示在线状态，event传按钮和红外事件，command发给红外节点。周期遥测采用QoS零，发送后不等待确认，下一轮继续上报新采样；在线状态采用QoS一并保留最近一条，用遗嘱消息通知意外断线。35秒没有新遥测时，HA把传感器标为不可用。",
+      "source": [
+        "docs/mqtt-protocol.md",
+        "services/bridge/validator.py",
+        "home-assistant/mqtt/real/node01.yaml"
+      ]
+    },
+    {
+      "title": "96 个像素，把状态显示出来",
+      "seconds": 50,
+      "note": "这是UNO板上的12乘8点阵。正常情况下，表情、温度、湿度和亮度四幕轮播，每幕6秒；光照低于0.10时，多一幕困倦表情。笑脸里还藏了眨眼和爱心。这里直接用固件生成的像素帧来演示，数值输入是24度、55%湿度和46%相对亮度。PPT里嵌入了轮播动画，网页里还能单独选择状态、暂停和逐帧查看。",
+      "source": [
+        "firmware/arduino-uno-r4/include/led_companion.h"
+      ]
+    },
+    {
+      "title": "从表情里，看出当前状态",
+      "seconds": 30,
+      "note": "点阵也承担状态提示。语音交互时显示跳动声波，传感器异常时显示哭脸，联网时显示搜索表情。温度达到29度或者湿度达到75%时，第一幕会变成流汗脸。几种状态同时出现时，按语音、传感故障、网络连接、正常轮播的顺序显示。这样不用先打开电脑，也能看到节点正在做什么。",
+      "source": [
+        "firmware/arduino-uno-r4/include/led_companion.h"
+      ]
+    },
+    {
+      "title": "说一句话，交小西怎样找到答案",
+      "seconds": 65,
+      "note": "以“现在宿舍温湿度怎么样”为例。浏览器录音后，先通过转写接口得到文字，再交给Hermes组织对话并请求大模型。模型根据问题发起ha_get_state调用，Hermes执行工具，经只读网关向Home Assistant读取温度和湿度实体。读数以结构化结果返回模型，模型再组织成自然语言回答，网页显示文字，并通过Edge TTS播报。所以模型负责理解和表达，具体数值由工具从传感系统里取。实体按钮也接入这个入口：按住开始录音，松手结束并发送。",
+      "source": [
+        "hermes/patches/hermes.patch",
+        "hermes/workspace/AGENTS.md",
+        "services/bridge/read_gateway.py"
+      ]
+    },
+    {
+      "title": "工具怎样读到宿舍的实时数据",
+      "seconds": 35,
+      "note": "工具读取的是HA中的五个实体：温度、湿度、相对光照、按钮事件和红外事件。模型按问题选需要的实体，比如问温湿度就读取两项。只读网关接收GET请求，附加后端凭据后查询HA，再把允许的状态字段返回Hermes。这样大模型可以查数据，而后端账户和设备控制留在平台侧。红外学习则使用独立的三个学习工具。",
+      "source": [
+        "services/bridge/read_gateway.py",
+        "hermes/workspace/AGENTS.md",
+        "hermes/plugins/xiaoxi_ir_learning/__init__.py"
+      ]
+    },
+    {
+      "title": "保留一天历史，平滑采样抖动",
+      "seconds": 45,
+      "note": "平台保留最近24小时环境历史，每5分钟清理一次旧数据。分析端对温度、湿度和光照分别进行一维卡尔曼滤波：根据实际采样间隔更新估计，再结合新观测平滑瞬时抖动。图中用一组合成数据演示这个过程。设备重启或间隔超过35秒时重新初始化，保持估计和当前采样状态对应。",
+      "source": [
+        "analytics/src/environment.py",
+        "home-assistant/automations/environment-retention.yaml",
+        "docs/history-and-kalman.md"
+      ]
+    },
+    {
+      "title": "空调红外：从原始波形开始学习",
+      "seconds": 50,
+      "note": "红外部分遇到的问题是，原装遥控器的长帧与标准库默认发送的短帧不同。我们转向采集原始微秒时序，保留完整长帧。这个案例有280项时序，导出容量扩展到300项。操作上先建立基线，再逐键学习，用14个状态字段比较按键前后的变化。需要回放时，本地操作者完成prepare和commit，节点在38千赫载波上发送一次，现场观察空调响应。",
+      "source": [
+        "docs/ac-onboarding.md",
+        "services/ir_learning/server.py",
+        "firmware/esp32-c3-ir/include/ir_raw_timing.h"
+      ]
+    },
+    {
+      "title": "三处联调，真正把器件接起来",
+      "seconds": 40,
+      "note": "联调中有三处比较典型。第一，手上的SHT31是UART输出模块，我们实现字节流分帧和重同步。第二，UNO的点阵刷新会影响模拟引脚配置，采样前短暂消隐，稳定后读取A0，再恢复引脚访问。第三，C3的红外接收中断会打扰发送，所以发送期间暂停接收，再恢复。解决这些问题，让我们从能读到一个数，走到多个器件能够一起工作。",
+      "source": [
+        "docs/hardware.md",
+        "docs/ac-onboarding.md",
+        "firmware/arduino-uno-r4/src/main.cpp",
+        "firmware/esp32-c3-ir/src/main.cpp"
+      ]
+    },
+    {
+      "title": "五项新增采购，共 57.64 元",
+      "seconds": 25,
+      "note": "这次新增采购五项，共57.64元，占200元预算的28.8%。包括温湿度模块、ESP32-C3、电阻包，以及红外接收和发射器。UNO、光敏模块、按钮和面包板沿用已有器件。把这些器件复用起来，我们完成了感知、通信和交互的整体搭建。",
+      "source": [
+        "docs/hardware.md",
+        "presentation/final-defense/src/public-data.json"
+      ]
+    },
+    {
+      "title": "六人三组，沿接口协同",
+      "seconds": 20,
+      "note": "六位同学分成三组：感知与点阵、红外与通信、平台与智能体。三条线通过MQTT数据格式、实体接口和统一状态定义对接。我们先约定各模块收什么、发什么，再并行开发和联调。",
+      "source": [
+        "presentation/final-defense/src/public-data.json"
+      ]
+    },
+    {
+      "title": "实物演示：从遮光，到一句回答",
+      "seconds": 240,
+      "note": "下面用四分钟走一遍。第一分钟，遮挡再移开光敏模块，观察读数和点阵变化，也展示温湿度数字。第二分钟，按住按钮提问“现在宿舍温湿度和光照怎么样”，松手发送，查看网页转写、工具调用和语音回答。后两分钟，展示已录入的遥控器按键与状态比对，确认一次回放并观察空调响应。演示前打开网页、允许麦克风，并准备好遥控器和目标空调。",
+      "source": [
+        "docs/experiments.md",
+        "docs/ac-onboarding.md",
+        "hermes/patches/hermes.patch"
+      ]
+    },
+    {
+      "title": "谢谢大家",
+      "seconds": 15,
+      "note": "交小西把宿舍里的传感器、无线通信和自然语言交互接在一起。从采集一个读数，到点亮一个表情，再到一次有数据依据的回答，这就是我们的课程实践。谢谢各位老师，欢迎提问。",
+      "source": [
+        "README.md"
+      ]
+    },
+    {
+      "title": "附录：关键参数速查",
+      "seconds": 0,
+      "note": "这一页用于回答周期、阈值和接口方面的问题。点阵、按钮、上报和历史窗口参数，都可以在对应固件或配置中找到。",
+      "source": [
+        "firmware/arduino-uno-r4/include/led_companion.h",
+        "docs/mqtt-protocol.md",
+        "docs/history-and-kalman.md"
+      ]
+    },
+    {
+      "title": "附录：源码与参考资料",
+      "seconds": 0,
+      "note": "点阵来自原固件头文件，MQTT主题和可靠性参数见协议文档，工具读取与语音流程分别对应网关和Hermes补丁。商业音箱对比参考DuerOS官方智能家居接入文档。",
+      "source": [
+        "README.md",
+        "docs/mqtt-protocol.md",
+        "hermes/patches/hermes.patch"
+      ]
+    }
+  ],
+  "main_slides": 18,
+  "total_seconds": 855,
+  "template": "assets/2021simpleblue.pptx",
+  "led_slide": 8,
+  "led_source_sha256": "8fe25f82731339917d06375a261cf27f218bc04c0c6ffcf4b7a58833743f589b",
+  "fonts": [
+    "Microsoft YaHei",
+    "Arial"
+  ],
+  "budget": {
+    "SHT31 温湿度模块": 17.48,
+    "ESP32-C3": 16.62,
+    "电阻包": 17.67,
+    "红外接收器": 3.13,
+    "红外发射器": 2.74
+  },
+  "palette": {
+    "paper": "FFFFFF",
+    "ink": "182B3B",
+    "blue": "005AA6",
+    "cyan": "039ACF",
+    "led": "89DFFD",
+    "quiet": "647584",
+    "panel": "EAF3FA"
+  }
+}
